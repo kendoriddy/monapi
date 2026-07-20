@@ -70,8 +70,7 @@ export default async function DashboardProductPage({
 
   if (!product) notFound();
 
-  const { experience, runtime, liveAvailable, liveBlockedReason } =
-    await getHeaderState();
+  const { experience, runtime } = await getHeaderState();
   const insight = buildInsightsSummary(
     subscriptions.filter((s) => s.plan),
     plans,
@@ -82,8 +81,6 @@ export default async function DashboardProductPage({
       <SiteHeader
         experience={experience}
         runtime={runtime}
-        liveAvailable={liveAvailable}
-        liveBlockedReason={liveBlockedReason}
         right={
           product.is_live ? (
             <Link href={`/p/${product.slug}`}>

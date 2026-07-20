@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   EXPERIENCE_COOKIE,
   RUNTIME_COOKIE,
-  isLiveModeAvailable,
   parseExperience,
   parseRuntime,
   type Experience,
@@ -30,10 +29,7 @@ export async function POST(request: Request) {
   }
 
   if (body.runtime !== undefined) {
-    let runtime: RuntimeMode = parseRuntime(body.runtime);
-    if (runtime === "live" && !isLiveModeAvailable()) {
-      runtime = "demo";
-    }
+    const runtime: RuntimeMode = parseRuntime(body.runtime);
     response.cookies.set(RUNTIME_COOKIE, runtime, COOKIE_OPTS);
   }
 

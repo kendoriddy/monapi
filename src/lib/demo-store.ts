@@ -1,6 +1,5 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { isSupabaseReady } from "@/lib/env";
 import type {
   ApiProduct,
   CustomerSubscription,
@@ -75,13 +74,22 @@ async function writeStore(store: DemoStore) {
 }
 
 export function isSupabaseConfiguredForProd() {
-  return isSupabaseReady();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  if (!url || !key) return false;
+  if (
+    url.includes("YOUR_PROJECT") ||
+    key.startsWith("your_") ||
+    key === "your_anon_key"
+  ) {
+    return false;
+  }
+  return true;
 }
 
 /**
  * Demo uses the local `.data/demo-store.json` backend.
- * Preference cookie can force demo even when Supabase is configured;
- * Live is impossible without real Supabase credentials.
+ * Controlled by the Demo/Live header toggle (cookie), or MONAPI_DEMO_MODE=true.
  */
 export async function isDemoMode() {
   const { resolveDemoModeFromPreference, getRuntimePreference } =

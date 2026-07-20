@@ -7,14 +7,10 @@ export function SiteHeader({
   right,
   experience,
   runtime,
-  liveAvailable,
-  liveBlockedReason,
 }: {
   right?: React.ReactNode;
   experience: Experience;
   runtime: RuntimeMode;
-  liveAvailable: boolean;
-  liveBlockedReason?: string;
 }) {
   return (
     <header className="relative z-50 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur">
@@ -31,12 +27,7 @@ export function SiteHeader({
           </div>
         </Link>
         <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3">
-          <HeaderControls
-            experience={experience}
-            runtime={runtime}
-            liveAvailable={liveAvailable}
-            liveBlockedReason={liveBlockedReason}
-          />
+          <HeaderControls experience={experience} runtime={runtime} />
           {right}
         </div>
       </div>

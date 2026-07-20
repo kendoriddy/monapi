@@ -44,8 +44,7 @@ async function loadMarketplaceListings() {
 
 export default async function HomePage() {
   const user = await getCurrentUser();
-  const { experience, runtime, liveAvailable, liveBlockedReason, demo } =
-    await getHeaderState();
+  const { experience, runtime, demo } = await getHeaderState();
   const listings =
     experience === "subscriber" ? await loadMarketplaceListings() : [];
 
@@ -57,8 +56,6 @@ export default async function HomePage() {
       <SiteHeader
         experience={experience}
         runtime={runtime}
-        liveAvailable={liveAvailable}
-        liveBlockedReason={liveBlockedReason}
         right={
           user ? (
             <span className="hidden text-sm text-[var(--muted)] lg:inline">

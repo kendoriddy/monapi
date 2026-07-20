@@ -1,12 +1,4 @@
 import { cookies } from "next/headers";
-import {
-  evaluateSupabaseConfig,
-  isDemoModeForced,
-  isLiveModeAvailable as envLiveAvailable,
-  isSupabaseReady,
-  liveBlockMessage,
-  type LiveBlockReason,
-} from "@/lib/env";
 
 export const EXPERIENCE_COOKIE = "monapi_experience";
 export const RUNTIME_COOKIE = "monapi_runtime";
@@ -34,26 +26,14 @@ export async function getRuntimePreference(): Promise<RuntimeMode | undefined> {
   return undefined;
 }
 
-/** Live requires real Supabase credentials and no forced demo env. */
-export function isLiveModeAvailable() {
-  return envLiveAvailable();
-}
-
-export function getLiveBlockReason(): LiveBlockReason {
-  return evaluateSupabaseConfig().blockReason;
-}
-
-export function getLiveBlockMessage() {
-  return liveBlockMessage(getLiveBlockReason());
-}
-
+/**
+ * Demo only when the user picks Demo, or MONAPI_DEMO_MODE=true forces it.
+ * Default (no cookie) is Live.
+ */
 export function resolveDemoModeFromPreference(
   preference: RuntimeMode | undefined,
 ): boolean {
-  if (isDemoModeForced()) return true;
-  if (!isSupabaseReady()) return true;
+  if (process.env.MONAPI_DEMO_MODE === "true") return true;
   if (preference === "demo") return true;
-  if (preference === "live") return false;
-  // Default: Live when Supabase is configured (esp. on Vercel production).
   return false;
 }

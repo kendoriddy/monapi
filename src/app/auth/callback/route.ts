@@ -1,6 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getSupabaseAnonKey, getSupabaseUrl } from "@/lib/env";
 
 /**
  * OAuth PKCE callback. Session cookies must be written onto the redirect
@@ -28,8 +27,8 @@ export async function GET(request: NextRequest) {
   }
 
   if (code) {
-    const url = getSupabaseUrl();
-    const key = getSupabaseAnonKey();
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!url || !key) {
       return NextResponse.redirect(
@@ -54,6 +53,7 @@ export async function GET(request: NextRequest) {
 
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      // Keep Live mode selected after a successful real sign-in.
       response.cookies.set("monapi_runtime", "live", {
         path: "/",
         sameSite: "lax",

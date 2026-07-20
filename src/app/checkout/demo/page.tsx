@@ -6,16 +6,13 @@ import { Button } from "@/components/ui/button";
 import { getHeaderState } from "@/lib/header-state";
 
 export default async function DemoCheckoutPage() {
-  const { experience, runtime, liveAvailable, liveBlockedReason } =
-    await getHeaderState();
+  const { experience, runtime } = await getHeaderState();
 
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)]">
       <SiteHeader
         experience={experience}
         runtime={runtime}
-        liveAvailable={liveAvailable}
-        liveBlockedReason={liveBlockedReason}
         right={
           <Link href="/">
             <Button variant="ghost" size="sm">

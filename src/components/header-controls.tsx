@@ -41,13 +41,9 @@ async function savePreferences(input: {
 export function HeaderControls({
   experience,
   runtime,
-  liveAvailable,
-  liveBlockedReason,
 }: {
   experience: Experience;
   runtime: RuntimeMode;
-  liveAvailable: boolean;
-  liveBlockedReason?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -90,7 +86,6 @@ export function HeaderControls({
 
   function switchRuntime(next: RuntimeMode) {
     if (next === runtime) return;
-    if (next === "live" && !liveAvailable) return;
     startTransition(async () => {
       await savePreferences({ runtime: next });
       router.refresh();
@@ -162,29 +157,21 @@ export function HeaderControls({
 
       <div
         className="inline-flex h-9 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-0.5"
-        title={
-          liveAvailable
-            ? "Switch between demo data and live Supabase"
-            : liveBlockedReason ||
-              "Add Supabase env vars in Vercel and redeploy to enable Live"
-        }
+        title="Switch between demo data and live Supabase"
       >
         {(["demo", "live"] as const).map((mode) => {
           const active = runtime === mode;
-          const disabled = mode === "live" && !liveAvailable;
           return (
             <button
               key={mode}
               type="button"
-              disabled={disabled || pending}
+              disabled={pending}
               onClick={() => switchRuntime(mode)}
               className={cn(
                 "rounded-md px-2.5 py-1 text-xs font-semibold capitalize transition-colors",
                 active
                   ? "bg-[var(--accent)] text-[var(--accent-fg)]"
                   : "text-[var(--muted)] hover:text-[var(--foreground)]",
-                disabled &&
-                  "cursor-not-allowed opacity-40 hover:text-[var(--muted)]",
               )}
             >
               {mode}
