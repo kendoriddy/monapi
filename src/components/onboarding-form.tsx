@@ -12,8 +12,9 @@ import {
   plansToEditable,
   type EditableTier,
 } from "@/components/hub-preview-editor";
+import { persistDemoProduct } from "@/lib/demo-client-store";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
-import type { SubscriptionPlan } from "@/lib/types";
+import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 
 export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
   const router = useRouter();
@@ -62,9 +63,14 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         docs_markdown: string;
       };
       const plans = data.plans as SubscriptionPlan[];
+      const product = data.product as ApiProduct;
 
-      setProductId(data.product.id as string);
-      setProductSlug(data.product.slug as string);
+      if (demoMode) {
+        persistDemoProduct(product, plans);
+      }
+
+      setProductId(product.id);
+      setProductSlug(product.slug);
       setProductTitle(blueprint.product_name);
       setLandingCopy(blueprint.landing_copy);
       setDocsMarkdown(blueprint.docs_markdown);
@@ -118,6 +124,13 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         throw new Error(patchData.error || "Failed to save changes");
       }
 
+      if (demoMode && patchData.product && patchData.plans) {
+        persistDemoProduct(
+          patchData.product as ApiProduct,
+          patchData.plans as SubscriptionPlan[],
+        );
+      }
+
       const pubRes = await fetch(`/api/products/${productId}/publish`, {
         method: "POST",
         headers: runtimeFetchHeaders(demoMode),
@@ -125,7 +138,31 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
       const pubData = await pubRes.json();
       if (!pubRes.ok) throw new Error(pubData.error || "Failed to publish");
 
-      const slug = (pubData.product?.slug as string) || productSlug;
+      const published = pubData.product as ApiProduct | undefined;
+      const publishedPlans =
+        (pubData.plans as SubscriptionPlan[] | undefined) ??
+        (patchData.plans as SubscriptionPlan[] | undefined) ??
+        [];
+
+      if (demoMode && published) {
+        persistDemoProduct(
+          { ...published, is_live: true },
+          publishedPlans.length
+            ? publishedPlans
+            : editableTiers.map((t) => ({
+                id: t.id,
+                product_id: published.id,
+                name: t.name,
+                price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
+                limit_per_month: t.limit_per_month,
+                features: t.features,
+                monnify_plan_code: null,
+                created_at: new Date().toISOString(),
+              })),
+        );
+      }
+
+      const slug = published?.slug || productSlug;
       router.push(`/p/${slug}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publish failed");

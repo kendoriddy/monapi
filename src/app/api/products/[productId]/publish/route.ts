@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { demoPublishProduct, isDemoMode } from "@/lib/demo-store";
+import {
+  attachDemoStoreCookie,
+  demoGetProduct,
+  demoPublishProduct,
+  getDemoStoreSnapshot,
+  isDemoMode,
+} from "@/lib/demo-store";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(
@@ -16,7 +22,14 @@ export async function POST(
 
     if (await isDemoMode(request)) {
       const product = await demoPublishProduct(productId);
-      return NextResponse.json({ product });
+      const { plans } = await demoGetProduct(productId);
+      const response = NextResponse.json({
+        product,
+        plans,
+        mode: "demo",
+      });
+      attachDemoStoreCookie(response, await getDemoStoreSnapshot());
+      return response;
     }
 
     const supabase = await createClient();

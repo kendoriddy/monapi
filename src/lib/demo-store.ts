@@ -1,5 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
+import type { NextResponse } from "next/server";
+import { DEMO_STORE_COOKIE } from "@/lib/runtime";
 import type {
   ApiProduct,
   CustomerSubscription,
@@ -18,7 +20,7 @@ type PendingCheckout = {
   createdAt: string;
 };
 
-type DemoStore = {
+export type DemoStore = {
   products: ApiProduct[];
   plans: SubscriptionPlan[];
   subscriptions: CustomerSubscription[];
@@ -63,6 +65,15 @@ function normalizeSubscription(s: CustomerSubscription): CustomerSubscription {
   };
 }
 
+function normalizeStore(parsed: DemoStore): DemoStore {
+  return {
+    products: (parsed.products ?? []).map(normalizeProduct),
+    plans: parsed.plans ?? [],
+    subscriptions: (parsed.subscriptions ?? []).map(normalizeSubscription),
+    pendingCheckouts: parsed.pendingCheckouts ?? [],
+  };
+}
+
 function memoryStore(): DemoStore {
   const g = globalThis as GlobalDemo;
   if (!g.__monapiDemoStore) {
@@ -71,8 +82,72 @@ function memoryStore(): DemoStore {
   return g.__monapiDemoStore;
 }
 
+export function parseDemoStoreCookie(
+  raw: string | undefined | null,
+): DemoStore | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as DemoStore;
+    return normalizeStore(parsed);
+  } catch {
+    try {
+      const parsed = JSON.parse(decodeURIComponent(raw)) as DemoStore;
+      return normalizeStore(parsed);
+    } catch {
+      return null;
+    }
+  }
+}
+
+export function serializeDemoStore(store: DemoStore): string {
+  let payload: DemoStore = store;
+  let json = JSON.stringify(payload);
+  if (json.length > 3000) {
+    payload = {
+      ...store,
+      products: store.products.map((p) => ({
+        ...p,
+        docs_markdown: (p.docs_markdown ?? "").slice(0, 500),
+      })),
+    };
+    json = JSON.stringify(payload);
+  }
+  return json;
+}
+
+export function attachDemoStoreCookie(
+  response: NextResponse,
+  store: DemoStore,
+) {
+  response.cookies.set(DEMO_STORE_COOKIE, serializeDemoStore(store), {
+    path: "/",
+    sameSite: "lax",
+    httpOnly: false,
+    maxAge: 60 * 60 * 24 * 7,
+  });
+  return response;
+}
+
+async function readDemoCookieValue(): Promise<string | undefined> {
+  try {
+    const { cookies } = await import("next/headers");
+    return (await cookies()).get(DEMO_STORE_COOKIE)?.value;
+  } catch {
+    return undefined;
+  }
+}
+
 async function ensureStore(): Promise<DemoStore> {
   const g = globalThis as GlobalDemo;
+  const cookieStore = parseDemoStoreCookie(await readDemoCookieValue());
+
+  // Cookie is the source of truth across Vercel serverless isolates.
+  if (cookieStore) {
+    g.__monapiDemoUseMemory = true;
+    g.__monapiDemoStore = cookieStore;
+    return cookieStore;
+  }
+
   if (g.__monapiDemoUseMemory || preferMemoryStore()) {
     g.__monapiDemoUseMemory = true;
     return memoryStore();
@@ -81,11 +156,7 @@ async function ensureStore(): Promise<DemoStore> {
   try {
     const raw = await fs.readFile(STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as DemoStore;
-    return {
-      ...parsed,
-      products: (parsed.products ?? []).map(normalizeProduct),
-      subscriptions: (parsed.subscriptions ?? []).map(normalizeSubscription),
-    };
+    return normalizeStore(parsed);
   } catch {
     // Local disk unavailable (e.g. serverless) — fall back to memory.
     try {
@@ -105,9 +176,10 @@ async function ensureStore(): Promise<DemoStore> {
 
 async function writeStore(store: DemoStore) {
   const g = globalThis as GlobalDemo;
+  g.__monapiDemoStore = store;
+
   if (g.__monapiDemoUseMemory || preferMemoryStore()) {
     g.__monapiDemoUseMemory = true;
-    g.__monapiDemoStore = store;
     return;
   }
 
@@ -119,8 +191,12 @@ async function writeStore(store: DemoStore) {
       "[demo-store] write failed — switching to in-memory demo store",
     );
     g.__monapiDemoUseMemory = true;
-    g.__monapiDemoStore = store;
   }
+}
+
+/** Current demo store snapshot (for Set-Cookie on API responses). */
+export async function getDemoStoreSnapshot(): Promise<DemoStore> {
+  return ensureStore();
 }
 
 export function isSupabaseConfiguredForProd() {

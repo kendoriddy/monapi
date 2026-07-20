@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { demoUpdateProductHub, isDemoMode } from "@/lib/demo-store";
+import {
+  attachDemoStoreCookie,
+  demoUpdateProductHub,
+  getDemoStoreSnapshot,
+  isDemoMode,
+} from "@/lib/demo-store";
 import { createClient } from "@/lib/supabase/server";
 
 export async function PATCH(
@@ -44,7 +49,9 @@ export async function PATCH(
         docsMarkdown: body.docsMarkdown,
         tiers,
       });
-      return NextResponse.json({ product, plans });
+      const response = NextResponse.json({ product, plans, mode: "demo" });
+      attachDemoStoreCookie(response, await getDemoStoreSnapshot());
+      return response;
     }
 
     const supabase = await createClient();

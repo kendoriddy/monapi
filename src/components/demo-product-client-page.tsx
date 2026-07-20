@@ -1,70 +1,65 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { CheckoutForm } from "@/components/checkout-form";
-import { DemoProductClientPage } from "@/components/demo-product-client-page";
 import { ProductDocs } from "@/components/product-docs";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { demoGetProductBySlug, isDemoMode } from "@/lib/demo-store";
-import { getHeaderState } from "@/lib/header-state";
-import { getAppOriginFromHeaders } from "@/lib/origin";
-import { createServiceClient } from "@/lib/supabase/server";
+import { getDemoProductBySlugClient } from "@/lib/demo-client-store";
+import type { Experience, RuntimeMode } from "@/lib/runtime";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { buildGatewayCurl } from "@/lib/utils";
 
-async function loadProductBySlug(slug: string, demo: boolean) {
-  if (demo) {
-    const { product, plans } = await demoGetProductBySlug(slug);
-    if (!product) return null;
-    return { product, plans };
+export function DemoProductClientPage({
+  slug,
+  experience,
+  runtime,
+  origin,
+}: {
+  slug: string;
+  experience: Experience;
+  runtime: RuntimeMode;
+  origin: string;
+}) {
+  const [data, setData] = useState<{
+    product: ApiProduct;
+    plans: SubscriptionPlan[];
+  } | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setData(getDemoProductBySlugClient(slug));
+    setReady(true);
+  }, [slug]);
+
+  if (!ready) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">
+        Loading demo product…
+      </div>
+    );
   }
 
-  const supabase = createServiceClient();
-  const { data: product } = await supabase
-    .from("api_products")
-    .select("*")
-    .eq("slug", slug)
-    .eq("is_live", true)
-    .single();
-
-  if (!product) return null;
-
-  const { data: plans } = await supabase
-    .from("subscription_plans")
-    .select("*")
-    .eq("product_id", product.id)
-    .order("price_ngn", { ascending: true });
-
-  return {
-    product: product as ApiProduct,
-    plans: (plans ?? []) as SubscriptionPlan[],
-  };
-}
-
-export default async function PublicProductPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const { slug } = await params;
-  const { experience, runtime, demo } = await getHeaderState();
-  const origin = await getAppOriginFromHeaders();
-  // Prefer explicit demo runtime; also treat cookie-backed demo store as demo.
-  const demoRuntime = demo || (await isDemoMode());
-  const data = await loadProductBySlug(slug, demoRuntime);
-
   if (!data) {
-    if (demoRuntime) {
-      return (
-        <DemoProductClientPage
-          slug={slug}
-          experience={experience}
-          runtime={runtime}
-          origin={origin}
-        />
-      );
-    }
-    notFound();
+    return (
+      <div className="flex min-h-screen flex-col">
+        <SiteHeader experience={experience} runtime={runtime} />
+        <main className="mx-auto max-w-lg flex-1 px-4 py-20 text-center">
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">
+            Page not found
+          </h1>
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            That demo product isn&apos;t in this browser&apos;s demo catalog.
+            Publish it again from Demo mode, then open the link in the same
+            browser.
+          </p>
+          <Link href="/" className="mt-6 inline-block">
+            <Button size="sm">Back home</Button>
+          </Link>
+        </main>
+      </div>
+    );
   }
 
   const { product, plans } = data;
@@ -91,7 +86,7 @@ export default async function PublicProductPage({
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">
         <div className="animate-in mb-12 max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Subscribe{demoRuntime ? " · Demo" : ""}
+            Subscribe · Demo
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight text-[var(--foreground)]">
             {product.name}
@@ -106,7 +101,7 @@ export default async function PublicProductPage({
             productId={product.id}
             productName={product.name}
             plans={plans}
-            demoMode={demoRuntime}
+            demoMode
           />
         </section>
 

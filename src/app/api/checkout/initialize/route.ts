@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import {
+  attachDemoStoreCookie,
   demoGetProduct,
   demoProvisionSubscription,
   demoSavePendingCheckout,
+  getDemoStoreSnapshot,
   isDemoMode,
 } from "@/lib/demo-store";
 import { sendApiKeyEmail } from "@/lib/email";
@@ -102,11 +104,13 @@ export async function POST(request: Request) {
           monnifyTransactionReference: paymentReference,
           emailPreview: emailResult.preview,
         });
-        return NextResponse.json({
+        const freeRes = NextResponse.json({
           redirectUrl: appRedirectUrl,
           paymentReference,
           mode: "demo-free",
         });
+        attachDemoStoreCookie(freeRes, await getDemoStoreSnapshot());
+        return freeRes;
       }
 
       await demoSavePendingCheckout({
@@ -119,7 +123,7 @@ export async function POST(request: Request) {
         createdAt: new Date().toISOString(),
       });
 
-      return NextResponse.json({
+      const checkoutRes = NextResponse.json({
         checkoutUrl: demoCheckoutUrl(origin, {
           ref: paymentReference,
           amount: priceNgn,
@@ -131,6 +135,8 @@ export async function POST(request: Request) {
         paymentReference,
         mode: "demo-checkout",
       });
+      attachDemoStoreCookie(checkoutRes, await getDemoStoreSnapshot());
+      return checkoutRes;
     }
 
     // ── Live: Supabase + Monnify ────────────────────────────────────

@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { generateMonetizationPlans } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/auth";
-import { demoCreateProduct, isDemoMode } from "@/lib/demo-store";
+import {
+  attachDemoStoreCookie,
+  demoCreateProduct,
+  getDemoStoreSnapshot,
+  isDemoMode,
+} from "@/lib/demo-store";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { slugifyProductName, uniqueSlug } from "@/lib/utils";
 
@@ -76,7 +81,14 @@ export async function POST(request: Request) {
           tiers: blueprint.tiers,
         });
 
-        return NextResponse.json({ product, plans, blueprint, mode: "demo" });
+        const response = NextResponse.json({
+          product,
+          plans,
+          blueprint,
+          mode: "demo",
+        });
+        attachDemoStoreCookie(response, await getDemoStoreSnapshot());
+        return response;
       } catch (error) {
         console.error("[products] demo create failed", {
           message: error instanceof Error ? error.message : "unknown",
