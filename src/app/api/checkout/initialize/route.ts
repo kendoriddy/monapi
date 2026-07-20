@@ -140,6 +140,18 @@ export async function POST(request: Request) {
             checkoutUrl: monnify.checkoutUrl,
             paymentReference: monnify.paymentReference,
             mode: "demo-monnify",
+            pendingCheckout: {
+              paymentReference,
+              planId,
+              productId,
+              customerEmail,
+              customerName,
+              amount: priceNgn,
+              createdAt: new Date().toISOString(),
+              productName,
+              planName,
+              productSlug,
+            },
           });
           attachDemoStoreCookie(monnifyRes, store);
           return monnifyRes;
@@ -164,6 +176,18 @@ export async function POST(request: Request) {
         }),
         paymentReference,
         mode: "demo-checkout",
+        pendingCheckout: {
+          paymentReference,
+          planId,
+          productId,
+          customerEmail,
+          customerName,
+          amount: priceNgn,
+          createdAt: new Date().toISOString(),
+          productName,
+          planName,
+          productSlug,
+        },
       });
       attachDemoStoreCookie(checkoutRes, store);
       return checkoutRes;

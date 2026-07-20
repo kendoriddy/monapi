@@ -6,7 +6,21 @@ export type DemoClientCatalog = {
   plans: SubscriptionPlan[];
 };
 
+export type DemoPendingCheckout = {
+  paymentReference: string;
+  planId: string;
+  productId: string;
+  customerEmail: string;
+  customerName: string;
+  amount: number;
+  createdAt: string;
+  productName?: string;
+  planName?: string;
+  productSlug?: string;
+};
+
 const STORAGE_KEY = "monapi.demo.catalog.v1";
+const PENDING_KEY = "monapi.demo.pending.v1";
 
 function readStorage(): DemoClientCatalog {
   if (typeof window === "undefined") {
@@ -25,16 +39,64 @@ function readStorage(): DemoClientCatalog {
   }
 }
 
+function readPendingMap(): Record<string, DemoPendingCheckout> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PENDING_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw) as Record<string, DemoPendingCheckout>;
+  } catch {
+    return {};
+  }
+}
+
+function readCookieStoreSlice(): {
+  subscriptions: unknown[];
+  pendingCheckouts: DemoPendingCheckout[];
+} {
+  if (typeof document === "undefined") {
+    return { subscriptions: [], pendingCheckouts: [] };
+  }
+  try {
+    const match = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith(`${DEMO_STORE_COOKIE}=`));
+    if (!match) return { subscriptions: [], pendingCheckouts: [] };
+    const raw = decodeURIComponent(match.slice(DEMO_STORE_COOKIE.length + 1));
+    const parsed = JSON.parse(raw) as {
+      subscriptions?: unknown[];
+      pendingCheckouts?: DemoPendingCheckout[];
+    };
+    return {
+      subscriptions: parsed.subscriptions ?? [],
+      pendingCheckouts: parsed.pendingCheckouts ?? [],
+    };
+  } catch {
+    return { subscriptions: [], pendingCheckouts: [] };
+  }
+}
+
 function writeStorage(catalog: DemoClientCatalog) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(catalog));
   // Mirror into a cookie so the next SSR request on Vercel can see it.
+  // Never wipe pending checkouts or subscriptions — that breaks Monnify return.
   try {
+    const existing = readCookieStoreSlice();
+    const pendingByRef = new Map(
+      existing.pendingCheckouts.map((p) => [p.paymentReference, p]),
+    );
+    for (const p of Object.values(readPendingMap())) {
+      pendingByRef.set(p.paymentReference, p);
+    }
     const slim = JSON.stringify({
-      products: catalog.products,
+      products: catalog.products.map((p) => ({
+        ...p,
+        docs_markdown: (p.docs_markdown ?? "").slice(0, 400),
+      })),
       plans: catalog.plans,
-      subscriptions: [],
-      pendingCheckouts: [],
+      subscriptions: existing.subscriptions,
+      pendingCheckouts: Array.from(pendingByRef.values()),
     });
     if (slim.length < 3500) {
       document.cookie = `${DEMO_STORE_COOKIE}=${encodeURIComponent(slim)}; Path=/; Max-Age=${60 * 60 * 24 * 7}; SameSite=Lax`;
@@ -42,6 +104,29 @@ function writeStorage(catalog: DemoClientCatalog) {
   } catch {
     /* ignore cookie quota */
   }
+}
+
+/** Stash a pending checkout so /success can provision after Monnify redirect. */
+export function persistDemoPendingCheckout(pending: DemoPendingCheckout) {
+  if (typeof window === "undefined") return;
+  const map = readPendingMap();
+  map[pending.paymentReference] = pending;
+  window.localStorage.setItem(PENDING_KEY, JSON.stringify(map));
+  // Refresh cookie mirror with pending included.
+  writeStorage(readStorage());
+}
+
+export function getDemoPendingCheckout(
+  paymentReference: string,
+): DemoPendingCheckout | null {
+  return readPendingMap()[paymentReference] ?? null;
+}
+
+export function clearDemoPendingCheckout(paymentReference: string) {
+  if (typeof window === "undefined") return;
+  const map = readPendingMap();
+  delete map[paymentReference];
+  window.localStorage.setItem(PENDING_KEY, JSON.stringify(map));
 }
 
 /** Upsert a product + its plans into the browser demo catalog. */

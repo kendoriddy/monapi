@@ -8,9 +8,18 @@ import { isMonnifyConfigured, queryMonnifyTransaction } from "@/lib/monnify";
 import {
   findSubscriptionByPaymentReference,
   provisionFromPaymentReference,
+  type DemoPendingOverride,
 } from "@/lib/provision";
 import { getAppOrigin } from "@/lib/origin";
 import { normalizePaymentReference } from "@/lib/utils";
+
+const PAID_STATUSES = new Set([
+  "PAID",
+  "SUCCESS",
+  "SUCCESSFUL",
+  "COMPLETED",
+  "COMPLETE",
+]);
 
 /**
  * Fallback when Monnify webhooks cannot reach the server (or demo cookie
@@ -19,7 +28,10 @@ import { normalizePaymentReference } from "@/lib/utils";
  */
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { ref?: string };
+    const body = (await request.json()) as {
+      ref?: string;
+      demoPending?: DemoPendingOverride | null;
+    };
     const paymentReference = normalizePaymentReference(body.ref);
 
     if (!paymentReference) {
@@ -45,6 +57,32 @@ export async function POST(request: Request) {
     }
 
     if (!isMonnifyConfigured()) {
+      // Demo simulated checkout already provisioned via webhook simulate.
+      if (demo && body.demoPending) {
+        const result = await provisionFromPaymentReference({
+          paymentReference,
+          customerEmail: body.demoPending.customerEmail,
+          customerName: body.demoPending.customerName,
+          origin,
+          request,
+          demoPending: body.demoPending,
+        });
+        if ("missingPending" in result && result.missingPending) {
+          return NextResponse.json(
+            { error: "No pending checkout for this payment reference" },
+            { status: 404 },
+          );
+        }
+        const res = NextResponse.json({
+          ok: true,
+          ready: true,
+          alreadyProcessed: result.alreadyProcessed,
+          paymentReference,
+        });
+        attachDemoStoreCookie(res, await getDemoStoreSnapshot());
+        return res;
+      }
+
       return NextResponse.json(
         {
           error:
@@ -55,8 +93,9 @@ export async function POST(request: Request) {
     }
 
     const txn = await queryMonnifyTransaction(paymentReference);
+    const status = txn.status.toUpperCase();
 
-    if (txn.status !== "PAID") {
+    if (!PAID_STATUSES.has(status)) {
       console.info("[reconcile] transaction not PAID yet", {
         paymentReference,
         status: txn.status,
@@ -70,13 +109,19 @@ export async function POST(request: Request) {
 
     const result = await provisionFromPaymentReference({
       paymentReference: txn.paymentReference || paymentReference,
-      customerEmail: txn.customerEmail || undefined,
-      customerName: txn.customerName || undefined,
+      customerEmail: txn.customerEmail || body.demoPending?.customerEmail,
+      customerName: txn.customerName || body.demoPending?.customerName,
       origin,
       request,
+      demoPending: body.demoPending,
     });
 
     if ("missingPending" in result && result.missingPending) {
+      console.error("[reconcile] missing pending checkout", {
+        paymentReference,
+        demo,
+        hasClientPending: Boolean(body.demoPending),
+      });
       return NextResponse.json(
         { error: "No pending checkout for this payment reference" },
         { status: 404 },

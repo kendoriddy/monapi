@@ -29,6 +29,17 @@ export async function findSubscriptionByPaymentReference(
   return data ? { apiKey: data.api_key as string } : null;
 }
 
+export type DemoPendingOverride = {
+  planId: string;
+  productId: string;
+  customerEmail: string;
+  customerName: string;
+  amount?: number;
+  productName?: string;
+  planName?: string;
+  productSlug?: string;
+};
+
 /**
  * Shared provisioning used by Monnify webhooks and redirect reconcile.
  * Idempotent on paymentReference.
@@ -39,6 +50,8 @@ export async function provisionFromPaymentReference(input: {
   customerName?: string;
   origin: string;
   request?: Request;
+  /** Browser-stashed pending checkout (Demo + Monnify redirect). */
+  demoPending?: DemoPendingOverride | null;
 }) {
   const { paymentReference, origin, request } = input;
 
@@ -55,20 +68,49 @@ export async function provisionFromPaymentReference(input: {
   }
 
   if (await isDemoMode(request)) {
-    const pending = await demoGetPendingCheckout(paymentReference);
+    const stored = await demoGetPendingCheckout(paymentReference);
+    const pending =
+      stored ??
+      (input.demoPending
+        ? {
+            paymentReference,
+            planId: input.demoPending.planId,
+            productId: input.demoPending.productId,
+            customerEmail: input.demoPending.customerEmail,
+            customerName: input.demoPending.customerName,
+            amount: input.demoPending.amount ?? 0,
+            createdAt: new Date().toISOString(),
+          }
+        : null);
+
     if (!pending) {
       return { missingPending: true as const };
     }
 
-    const customerEmail = input.customerEmail || pending.customerEmail;
+    // If the browser sent pending but the cookie store lost it, re-save first.
+    if (!stored && input.demoPending) {
+      const { demoSavePendingCheckout } = await import("@/lib/demo-store");
+      await demoSavePendingCheckout(pending);
+    }
+
+    const customerEmail =
+      input.customerEmail ||
+      pending.customerEmail ||
+      input.demoPending?.customerEmail ||
+      "customer@example.com";
     const customerName =
-      input.customerName || pending.customerName || "API Customer";
+      input.customerName ||
+      pending.customerName ||
+      input.demoPending?.customerName ||
+      "API Customer";
 
     const { product, plans } = await demoGetProduct(pending.productId);
     const plan = plans.find((p) => p.id === pending.planId);
-    const productName = product?.name ?? "API Product";
-    const productSlug = product?.slug ?? "api-product";
-    const planName = plan?.name ?? "Plan";
+    const productName =
+      product?.name ?? input.demoPending?.productName ?? "API Product";
+    const productSlug =
+      product?.slug ?? input.demoPending?.productSlug ?? "api-product";
+    const planName = plan?.name ?? input.demoPending?.planName ?? "Plan";
 
     const apiKey = generateApiKey();
     const emailResult = await sendApiKeyEmail({

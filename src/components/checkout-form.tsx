@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PricingCards } from "@/components/pricing-cards";
+import {
+  persistDemoPendingCheckout,
+  type DemoPendingCheckout,
+} from "@/lib/demo-client-store";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { SubscriptionPlan } from "@/lib/types";
 
@@ -51,6 +55,10 @@ export function CheckoutForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Checkout failed");
+
+      if (demoMode && data.pendingCheckout) {
+        persistDemoPendingCheckout(data.pendingCheckout as DemoPendingCheckout);
+      }
 
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl as string;

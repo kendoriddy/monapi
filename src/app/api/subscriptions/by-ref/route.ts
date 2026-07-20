@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
-import { demoGetSubscriptionDetails, isDemoMode } from "@/lib/demo-store";
+import {
+  attachDemoStoreCookie,
+  demoGetSubscriptionDetails,
+  getDemoStoreSnapshot,
+  isDemoMode,
+} from "@/lib/demo-store";
 import { getAppOrigin } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildGatewayCurl, normalizePaymentReference } from "@/lib/utils";
@@ -24,7 +29,7 @@ export async function GET(request: Request) {
       }
 
       const slug = details.product?.slug ?? "api-product";
-      return NextResponse.json({
+      const res = NextResponse.json({
         ready: true,
         subscription: {
           apiKey: details.subscription.api_key,
@@ -42,6 +47,8 @@ export async function GET(request: Request) {
           emailPreview: details.subscription.email_preview,
         },
       });
+      attachDemoStoreCookie(res, await getDemoStoreSnapshot());
+      return res;
     }
 
     const supabase = createServiceClient();

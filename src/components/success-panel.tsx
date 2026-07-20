@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Copy, Loader2, Mail, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  clearDemoPendingCheckout,
+  getDemoPendingCheckout,
+} from "@/lib/demo-client-store";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { EmailPreview } from "@/lib/types";
 
@@ -34,30 +38,50 @@ export function SuccessPanel({
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
-    let reconciled = false;
 
     async function tryReconcile() {
-      if (reconciled) return;
-      reconciled = true;
       try {
-        // Needed for Demo + real Monnify Sandbox (webhooks can't read demo cookies).
-        await fetch("/api/checkout/reconcile", {
+        const demoPending = demoMode
+          ? getDemoPendingCheckout(paymentRef)
+          : null;
+        const res = await fetch("/api/checkout/reconcile", {
           method: "POST",
           headers: runtimeFetchHeaders(demoMode, {
             "Content-Type": "application/json",
           }),
-          body: JSON.stringify({ ref: paymentRef }),
+          body: JSON.stringify({
+            ref: paymentRef,
+            demoPending: demoPending
+              ? {
+                  planId: demoPending.planId,
+                  productId: demoPending.productId,
+                  customerEmail: demoPending.customerEmail,
+                  customerName: demoPending.customerName,
+                  amount: demoPending.amount,
+                  productName: demoPending.productName,
+                  planName: demoPending.planName,
+                  productSlug: demoPending.productSlug,
+                }
+              : null,
+          }),
         });
+        return res.ok;
       } catch {
-        /* poll will keep trying */
+        return false;
       }
     }
 
     async function poll() {
       attempts += 1;
       try {
-        // After a couple of polls, verify with Monnify if webhook hasn't landed.
-        if (attempts === 2 || attempts === 6) {
+        // Reconcile early and keep retrying — Monnify redirect often lands
+        // before the webhook, and Demo pending may only exist in localStorage.
+        if (
+          attempts === 1 ||
+          attempts === 3 ||
+          attempts === 6 ||
+          attempts === 12
+        ) {
           await tryReconcile();
         }
 
@@ -69,20 +93,21 @@ export function SuccessPanel({
         if (cancelled) return;
 
         if (json.ready && json.subscription) {
+          if (demoMode) clearDemoPendingCheckout(paymentRef);
           setData(json.subscription as SubscriptionPayload);
           return;
         }
 
-        if (attempts < 25) {
-          setTimeout(poll, 800);
+        if (attempts < 30) {
+          setTimeout(poll, 700);
         } else {
           setError(
-            "Still waiting for provisioning. If you paid on Monnify Sandbox, refresh once — we will verify the payment directly.",
+            "Still waiting for provisioning. Tap “Verify payment” below, or refresh once.",
           );
         }
       } catch {
         if (!cancelled) {
-          if (attempts < 25) setTimeout(poll, 1000);
+          if (attempts < 30) setTimeout(poll, 1000);
           else setError("Failed to load subscription");
         }
       }
@@ -93,6 +118,53 @@ export function SuccessPanel({
       cancelled = true;
     };
   }, [paymentRef, demoMode]);
+
+  async function verifyNow() {
+    setError(null);
+    setRunning(true);
+    try {
+      const demoPending = demoMode ? getDemoPendingCheckout(paymentRef) : null;
+      await fetch("/api/checkout/reconcile", {
+        method: "POST",
+        headers: runtimeFetchHeaders(demoMode, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          ref: paymentRef,
+          demoPending: demoPending
+            ? {
+                planId: demoPending.planId,
+                productId: demoPending.productId,
+                customerEmail: demoPending.customerEmail,
+                customerName: demoPending.customerName,
+                amount: demoPending.amount,
+                productName: demoPending.productName,
+                planName: demoPending.planName,
+                productSlug: demoPending.productSlug,
+              }
+            : null,
+        }),
+      });
+      const res = await fetch(
+        `/api/subscriptions/by-ref?ref=${encodeURIComponent(paymentRef)}`,
+        { headers: runtimeFetchHeaders(demoMode) },
+      );
+      const json = await res.json();
+      if (json.ready && json.subscription) {
+        if (demoMode) clearDemoPendingCheckout(paymentRef);
+        setData(json.subscription as SubscriptionPayload);
+        setError(null);
+      } else {
+        setError(
+          "Payment not provisioned yet. Wait a few seconds and try Verify again.",
+        );
+      }
+    } catch {
+      setError("Verification failed. Please try again.");
+    } finally {
+      setRunning(false);
+    }
+  }
 
   async function copy(text: string, kind: "key" | "curl") {
     await navigator.clipboard.writeText(text);
@@ -106,13 +178,10 @@ export function SuccessPanel({
     setRunResult(null);
     try {
       const res = await fetch(data.gatewayUrl, {
-        headers: {
-          Authorization: `Bearer ${data.apiKey}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${data.apiKey}` },
       });
-      const text = await res.text();
-      setRunResult(`${res.status} ${res.statusText}\n\n${text}`);
+      const json = await res.json();
+      setRunResult(JSON.stringify(json, null, 2));
     } catch (err) {
       setRunResult(err instanceof Error ? err.message : "Request failed");
     } finally {
@@ -120,119 +189,121 @@ export function SuccessPanel({
     }
   }
 
-  if (error) {
+  if (error && !data) {
     return (
-      <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-sm text-red-200">
-        {error}
+      <div className="space-y-4 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <p className="text-sm text-[var(--muted)]">{error}</p>
+        <Button type="button" onClick={verifyNow} disabled={running}>
+          {running ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Verifying…
+            </>
+          ) : (
+            "Verify payment"
+          )}
+        </Button>
       </div>
     );
   }
 
   if (!data) {
     return (
-      <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 text-[var(--muted)]">
-        <Loader2 className="h-5 w-5 animate-spin text-[var(--accent)]" />
-        Provisioning your API key via webhook…
+      <div className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
+        <Loader2 className="h-4 w-4 animate-spin text-[var(--accent)]" />
+        Waiting for Monnify webhook / provisioning…
       </div>
     );
   }
 
-  const preview = data.emailPreview;
-
   return (
     <div className="animate-in space-y-6">
-      <div className="rounded-2xl border border-[var(--accent)]/40 bg-[var(--surface)] p-6 sm:p-8">
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
         <div className="flex items-start gap-3">
           <CheckCircle2 className="mt-0.5 h-6 w-6 text-[var(--accent)]" />
           <div>
             <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold text-[var(--foreground)]">
-              You&apos;re live
+              You&apos;re in — {data.productName}
             </h1>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              {data.planName} on {data.productName} · {data.customerEmail}
+              {data.planName} · {data.customerEmail}
             </p>
           </div>
         </div>
 
-        <div className="mt-6">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-            API Key
+        <div className="mt-6 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
+            API key
           </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <code className="flex-1 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-3 font-mono text-sm text-[var(--accent)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <code className="flex-1 break-all rounded-lg border border-[var(--border)] bg-[var(--background)] px-3 py-2 font-mono text-xs">
               {data.apiKey}
             </code>
             <Button
               type="button"
+              size="sm"
               variant="secondary"
               onClick={() => copy(data.apiKey, "key")}
             >
-              <Copy className="h-4 w-4" />
+              <Copy className="h-3.5 w-3.5" />
               {copied === "key" ? "Copied" : "Copy"}
             </Button>
           </div>
         </div>
-
-        <div className="mt-6">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--muted)]">
-            Quick start
-          </p>
-          <pre className="overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 font-mono text-xs leading-relaxed text-[var(--foreground)]">
-            {data.curlSnippet}
-          </pre>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => copy(data.curlSnippet, "curl")}
-            >
-              <Copy className="h-4 w-4" />
-              {copied === "curl" ? "Copied curl" : "Copy curl"}
-            </Button>
-            <Button type="button" onClick={runRequest} disabled={running}>
-              {running ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Play className="h-4 w-4" />
-              )}
-              Run request
-            </Button>
-          </div>
-          {runResult && (
-            <pre className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 font-mono text-xs text-[var(--foreground)]">
-              {runResult}
-            </pre>
-          )}
-        </div>
       </div>
 
-      {preview && (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
-          <div className="mb-4 flex items-center gap-2">
-            <Mail className="h-5 w-5 text-[var(--accent)]" />
-            <div>
-              <p className="font-semibold text-[var(--foreground)]">
-                {preview.sent ? "Sent via Resend" : "Demo inbox"}
-              </p>
-              <p className="text-xs text-[var(--muted)]">
-                {preview.sent
-                  ? "Confirmation email delivered to the customer."
-                  : "Resend not configured — showing the email your customer would receive."}
-              </p>
-            </div>
-          </div>
-          <p className="text-sm text-[var(--muted)]">
-            To: <span className="text-[var(--foreground)]">{preview.to}</span>
-          </p>
-          <p className="mt-1 text-sm font-medium text-[var(--foreground)]">
-            {preview.subject}
-          </p>
-          <div
-            className="prose-inbox mt-4 max-h-64 overflow-y-auto rounded-lg border border-[var(--border)] bg-white p-4 text-sm text-slate-800"
-            dangerouslySetInnerHTML={{ __html: preview.html }}
-          />
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <div className="mb-3 flex items-center gap-2">
+          <Mail className="h-4 w-4 text-[var(--accent)]" />
+          <h2 className="font-semibold">Inbox preview</h2>
         </div>
-      )}
+        {data.emailPreview ? (
+          <div
+            className="prose prose-invert max-w-none rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 text-sm"
+            dangerouslySetInnerHTML={{ __html: data.emailPreview.html }}
+          />
+        ) : (
+          <p className="text-sm text-[var(--muted)]">
+            Email preview unavailable (Resend not configured).
+          </p>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6">
+        <h2 className="font-semibold">Quick start</h2>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 font-mono text-xs">
+          {data.curlSnippet}
+        </pre>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() => copy(data.curlSnippet, "curl")}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            {copied === "curl" ? "Copied" : "Copy curl"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            onClick={runRequest}
+            disabled={running}
+          >
+            {running ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Play className="h-3.5 w-3.5" />
+            )}
+            Run test request
+          </Button>
+        </div>
+        {runResult ? (
+          <pre className="mt-3 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 font-mono text-xs">
+            {runResult}
+          </pre>
+        ) : null}
+      </div>
     </div>
   );
 }
