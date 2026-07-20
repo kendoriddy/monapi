@@ -56,61 +56,62 @@ export async function POST(request: Request) {
       return res;
     }
 
-    if (!isMonnifyConfigured()) {
-      // Demo simulated checkout already provisioned via webhook simulate.
-      if (demo && body.demoPending) {
-        const result = await provisionFromPaymentReference({
-          paymentReference,
-          customerEmail: body.demoPending.customerEmail,
-          customerName: body.demoPending.customerName,
-          origin,
-          request,
-          demoPending: body.demoPending,
-        });
-        if ("missingPending" in result && result.missingPending) {
-          return NextResponse.json(
-            { error: "No pending checkout for this payment reference" },
-            { status: 404 },
-          );
-        }
-        const res = NextResponse.json({
-          ok: true,
-          ready: true,
-          alreadyProcessed: result.alreadyProcessed,
-          paymentReference,
-        });
-        attachDemoStoreCookie(res, await getDemoStoreSnapshot());
-        return res;
-      }
+    let paid = false;
+    let customerEmail = body.demoPending?.customerEmail;
+    let customerName = body.demoPending?.customerName;
+    let monnifyRef = paymentReference;
+    let monnifyError: string | null = null;
 
+    if (isMonnifyConfigured()) {
+      try {
+        const txn = await queryMonnifyTransaction(paymentReference);
+        const status = txn.status.toUpperCase();
+        if (PAID_STATUSES.has(status)) {
+          paid = true;
+          monnifyRef = txn.paymentReference || paymentReference;
+          customerEmail = txn.customerEmail || customerEmail;
+          customerName = txn.customerName || customerName;
+        } else {
+          return NextResponse.json({
+            ok: true,
+            ready: false,
+            status: txn.status,
+          });
+        }
+      } catch (error) {
+        monnifyError =
+          error instanceof Error
+            ? error.message
+            : "Failed to verify payment with Monnify";
+        console.error("[reconcile] Monnify verify failed", { monnifyError });
+      }
+    }
+
+    // Demo only: if Monnify verify is broken/misconfigured but the browser
+    // still has the pending checkout from init, finish provisioning locally.
+    if (!paid && demo && body.demoPending) {
+      console.warn(
+        "[reconcile] demo fallback provision without Monnify verify",
+        { paymentReference, monnifyError },
+      );
+      paid = true;
+    }
+
+    if (!paid) {
       return NextResponse.json(
         {
           error:
-            "Payment not provisioned yet and Monnify is not configured to verify",
+            monnifyError ??
+            "Payment not provisioned yet and could not be verified with Monnify",
         },
-        { status: 404 },
+        { status: monnifyError ? 502 : 404 },
       );
     }
 
-    const txn = await queryMonnifyTransaction(paymentReference);
-    const status = txn.status.toUpperCase();
-
-    if (!PAID_STATUSES.has(status)) {
-      console.info("[reconcile] transaction not PAID yet", {
-        paymentReference,
-        status: txn.status,
-      });
-      return NextResponse.json({
-        ok: true,
-        ready: false,
-        status: txn.status,
-      });
-    }
-
     const result = await provisionFromPaymentReference({
-      paymentReference: txn.paymentReference || paymentReference,
-      customerEmail: txn.customerEmail || body.demoPending?.customerEmail,
-      customerName: txn.customerName || body.demoPending?.customerName,
+      paymentReference: monnifyRef,
+      customerEmail,
+      customerName,
       origin,
       request,
       demoPending: body.demoPending,
@@ -128,10 +129,11 @@ export async function POST(request: Request) {
       );
     }
 
-    console.info("[reconcile] provisioned after Monnify query", {
+    console.info("[reconcile] provisioned", {
       paymentReference,
       keyPrefix: `${result.apiKey.slice(0, 12)}…`,
       demo,
+      monnifyVerified: !monnifyError,
     });
 
     const res = NextResponse.json({
@@ -139,6 +141,7 @@ export async function POST(request: Request) {
       ready: true,
       alreadyProcessed: result.alreadyProcessed,
       paymentReference,
+      demoFallback: Boolean(demo && monnifyError),
     });
     if (demo) attachDemoStoreCookie(res, await getDemoStoreSnapshot());
     return res;

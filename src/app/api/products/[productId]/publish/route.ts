@@ -8,6 +8,7 @@ import {
   isDemoMode,
 } from "@/lib/demo-store";
 import { createClient } from "@/lib/supabase/server";
+import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 
 export async function POST(
   request: Request,
@@ -21,7 +22,30 @@ export async function POST(
     }
 
     if (await isDemoMode(request)) {
-      const product = await demoPublishProduct(productId);
+      let snapshot: { product: ApiProduct; plans: SubscriptionPlan[] } | null =
+        null;
+      try {
+        const body = (await request.json()) as {
+          demoSnapshot?: {
+            product: ApiProduct;
+            plans: SubscriptionPlan[];
+          } | null;
+        };
+        snapshot = body.demoSnapshot ?? null;
+      } catch {
+        snapshot = null;
+      }
+
+      const product = await demoPublishProduct(productId, snapshot);
+      if (!product) {
+        return NextResponse.json(
+          {
+            error:
+              "Demo product not found in server store. Regenerate the hub, then publish again.",
+          },
+          { status: 404 },
+        );
+      }
       const { plans } = await demoGetProduct(productId);
       const response = NextResponse.json({
         product,

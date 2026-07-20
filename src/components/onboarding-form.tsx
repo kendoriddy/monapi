@@ -35,6 +35,8 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
   const [docsMarkdown, setDocsMarkdown] = useState("");
   const [editableTiers, setEditableTiers] = useState<EditableTier[]>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [demoProduct, setDemoProduct] = useState<ApiProduct | null>(null);
+  const [demoPlans, setDemoPlans] = useState<SubscriptionPlan[]>([]);
 
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +69,8 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
 
       if (demoMode) {
         persistDemoProduct(product, plans);
+        setDemoProduct(product);
+        setDemoPlans(plans);
       }
 
       setProductId(product.id);
@@ -102,6 +106,18 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
     setPublishing(true);
     setError(null);
     try {
+      const demoSnapshot =
+        demoMode && demoProduct
+          ? {
+              product: {
+                ...demoProduct,
+                landing_copy: landingCopy,
+                docs_markdown: docsMarkdown,
+              },
+              plans: demoPlans,
+            }
+          : null;
+
       const patchRes = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
         headers: runtimeFetchHeaders(demoMode, {
@@ -117,6 +133,7 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
             features: t.features,
             description: t.description,
           })),
+          demoSnapshot,
         }),
       });
       const patchData = await patchRes.json();
@@ -129,11 +146,31 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
           patchData.product as ApiProduct,
           patchData.plans as SubscriptionPlan[],
         );
+        setDemoProduct(patchData.product as ApiProduct);
+        setDemoPlans(patchData.plans as SubscriptionPlan[]);
       }
 
       const pubRes = await fetch(`/api/products/${productId}/publish`, {
         method: "POST",
-        headers: runtimeFetchHeaders(demoMode),
+        headers: runtimeFetchHeaders(demoMode, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          demoSnapshot:
+            demoMode && (patchData.product || demoProduct)
+              ? {
+                  product: {
+                    ...((patchData.product as ApiProduct) || demoProduct!),
+                    landing_copy: landingCopy,
+                    docs_markdown: docsMarkdown,
+                    is_live: true,
+                  },
+                  plans:
+                    (patchData.plans as SubscriptionPlan[] | undefined) ??
+                    demoPlans,
+                }
+              : null,
+        }),
       });
       const pubData = await pubRes.json();
       if (!pubRes.ok) throw new Error(pubData.error || "Failed to publish");
@@ -145,21 +182,21 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         [];
 
       if (demoMode && published) {
-        persistDemoProduct(
-          { ...published, is_live: true },
-          publishedPlans.length
-            ? publishedPlans
-            : editableTiers.map((t) => ({
-                id: t.id,
-                product_id: published.id,
-                name: t.name,
-                price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
-                limit_per_month: t.limit_per_month,
-                features: t.features,
-                monnify_plan_code: null,
-                created_at: new Date().toISOString(),
-              })),
-        );
+        const plansForPersist = publishedPlans.length
+          ? publishedPlans
+          : editableTiers.map((t) => ({
+              id: t.id,
+              product_id: published.id,
+              name: t.name,
+              price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
+              limit_per_month: t.limit_per_month,
+              features: t.features,
+              monnify_plan_code: null,
+              created_at: new Date().toISOString(),
+            }));
+        persistDemoProduct({ ...published, is_live: true }, plansForPersist);
+        setDemoProduct({ ...published, is_live: true });
+        setDemoPlans(plansForPersist);
       }
 
       const slug = published?.slug || productSlug;

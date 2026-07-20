@@ -7,6 +7,7 @@ import {
   isDemoMode,
 } from "@/lib/demo-store";
 import { createClient } from "@/lib/supabase/server";
+import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 
 export async function PATCH(
   request: Request,
@@ -29,6 +30,10 @@ export async function PATCH(
         features: string[];
         description?: string;
       }[];
+      demoSnapshot?: {
+        product: ApiProduct;
+        plans: SubscriptionPlan[];
+      } | null;
     };
 
     if (!body.landingCopy || !body.docsMarkdown || !body.tiers?.length) {
@@ -44,12 +49,26 @@ export async function PATCH(
     }));
 
     if (await isDemoMode(request)) {
-      const { product, plans } = await demoUpdateProductHub(productId, {
+      const updated = await demoUpdateProductHub(productId, {
         landingCopy: body.landingCopy,
         docsMarkdown: body.docsMarkdown,
         tiers,
+        snapshot: body.demoSnapshot,
       });
-      const response = NextResponse.json({ product, plans, mode: "demo" });
+      if (updated.missing) {
+        return NextResponse.json(
+          {
+            error:
+              "Demo product not found in server store. Regenerate the hub, then publish again.",
+          },
+          { status: 404 },
+        );
+      }
+      const response = NextResponse.json({
+        product: updated.product,
+        plans: updated.plans,
+        mode: "demo",
+      });
       attachDemoStoreCookie(response, await getDemoStoreSnapshot());
       return response;
     }

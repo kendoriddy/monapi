@@ -1,7 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
-const MONNIFY_BASE =
-  process.env.MONNIFY_BASE_URL ?? "https://sandbox.monnify.com/api/v1";
+const DEFAULT_MONNIFY_BASE = "https://sandbox.monnify.com/api/v1";
 
 type MonnifyTokenResponse = {
   requestSuccessful?: boolean;
@@ -22,15 +21,20 @@ type MonnifyInitResponse = {
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function getCredentials() {
-  const apiKey = process.env.MONNIFY_API_KEY;
-  const secretKey = process.env.MONNIFY_SECRET_KEY;
-  const contractCode = process.env.MONNIFY_CONTRACT_CODE;
+  const apiKey = process.env.MONNIFY_API_KEY?.trim();
+  const secretKey = process.env.MONNIFY_SECRET_KEY?.trim();
+  const contractCode = process.env.MONNIFY_CONTRACT_CODE?.trim();
 
   if (!apiKey || !secretKey || !contractCode) {
     return null;
   }
 
   return { apiKey, secretKey, contractCode };
+}
+
+function monnifyBaseUrl() {
+  const raw = (process.env.MONNIFY_BASE_URL ?? DEFAULT_MONNIFY_BASE).trim();
+  return raw.replace(/\/+$/, "");
 }
 
 export function isMonnifyConfigured() {
@@ -51,11 +55,12 @@ export async function getMonnifyAccessToken(): Promise<string> {
     "base64",
   );
 
-  const res = await fetch(`${MONNIFY_BASE}/auth/login`, {
+  const res = await fetch(`${monnifyBaseUrl()}/auth/login`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${basic}`,
       "Content-Type": "application/json",
+      Accept: "application/json",
     },
   });
 
@@ -65,8 +70,16 @@ export async function getMonnifyAccessToken(): Promise<string> {
     console.error("[monnify] auth failed", {
       status: res.status,
       message: data.responseMessage ?? "Unknown auth error",
+      hasApiKey: Boolean(creds.apiKey),
+      hasSecret: Boolean(creds.secretKey),
+      hasContract: Boolean(creds.contractCode),
+      base: monnifyBaseUrl(),
     });
-    throw new Error("Failed to authenticate with Monnify Sandbox");
+    throw new Error(
+      data.responseMessage
+        ? `Monnify auth failed: ${data.responseMessage}`
+        : "Failed to authenticate with Monnify Sandbox — check MONNIFY_API_KEY / MONNIFY_SECRET_KEY on Vercel",
+    );
   }
 
   const expiresIn = data.responseBody.expiresIn ?? 3500;
@@ -110,7 +123,7 @@ export async function initializeMonnifyTransaction(
   };
 
   const res = await fetch(
-    `${MONNIFY_BASE}/merchant/transactions/init-transaction`,
+    `${monnifyBaseUrl()}/merchant/transactions/init-transaction`,
     {
       method: "POST",
       headers: {
@@ -159,7 +172,7 @@ export function verifyMonnifySignature(
   payload: Record<string, unknown>,
   providedHash?: string | null,
 ): boolean {
-  const secret = process.env.MONNIFY_SECRET_KEY;
+  const secret = process.env.MONNIFY_SECRET_KEY?.trim();
   if (!secret) return false;
 
   const eventData = (payload.eventData ?? payload) as Record<string, unknown>;
@@ -212,7 +225,7 @@ type MonnifyQueryResponse = {
 /** Query Monnify for a transaction by our paymentReference (local webhook fallback). */
 export async function queryMonnifyTransaction(paymentReference: string) {
   const token = await getMonnifyAccessToken();
-  const url = new URL(`${MONNIFY_BASE}/merchant/transactions/query`);
+  const url = new URL(`${monnifyBaseUrl()}/merchant/transactions/query`);
   url.searchParams.set("paymentReference", paymentReference);
 
   const res = await fetch(url.toString(), {

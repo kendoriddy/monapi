@@ -99,20 +99,28 @@ export function parseDemoStoreCookie(
   }
 }
 
+/** Slim payload for the browser cookie — keep under typical 4KB limits. */
 export function serializeDemoStore(store: DemoStore): string {
-  let payload: DemoStore = store;
-  let json = JSON.stringify(payload);
-  if (json.length > 3000) {
-    payload = {
-      ...store,
-      products: store.products.map((p) => ({
-        ...p,
-        docs_markdown: (p.docs_markdown ?? "").slice(0, 500),
-      })),
-    };
-    json = JSON.stringify(payload);
-  }
-  return json;
+  const payload: DemoStore = {
+    products: store.products.map((p) => ({
+      ...p,
+      // Docs live in localStorage; cookie only needs identity + copy snippet.
+      docs_markdown: (p.docs_markdown ?? "").slice(0, 180),
+      landing_copy: (p.landing_copy ?? "").slice(0, 220),
+      description: (p.description ?? "").slice(0, 120),
+    })),
+    plans: store.plans.map((p) => ({
+      ...p,
+      features: (p.features ?? []).slice(0, 6).map((f) => f.slice(0, 80)),
+    })),
+    subscriptions: store.subscriptions.map((s) => ({
+      ...s,
+      // HTML preview blows past cookie limits and breaks later PATCH/reconcile.
+      email_preview: null,
+    })),
+    pendingCheckouts: store.pendingCheckouts.slice(-8),
+  };
+  return JSON.stringify(payload);
 }
 
 export function attachDemoStoreCookie(
@@ -303,13 +311,44 @@ export async function demoGetProductBySlug(slug: string) {
   return { product, plans };
 }
 
-export async function demoPublishProduct(productId: string) {
+export async function demoPublishProduct(
+  productId: string,
+  snapshot?: { product: ApiProduct; plans: SubscriptionPlan[] } | null,
+) {
   const store = await ensureStore();
-  const product = store.products.find((p) => p.id === productId);
-  if (!product) throw new Error("Product not found");
+  let product = store.products.find((p) => p.id === productId);
+
+  if (!product && snapshot?.product?.id === productId) {
+    await demoUpsertProductSnapshot({
+      product: { ...snapshot.product, is_live: true },
+      plans: snapshot.plans,
+    });
+    return (
+      (await ensureStore()).products.find((p) => p.id === productId) ?? null
+    );
+  }
+
+  if (!product) return null;
   product.is_live = true;
   await writeStore(store);
   return product;
+}
+
+/** Rehydrate a product/plans the browser still has when the cookie was dropped. */
+export async function demoUpsertProductSnapshot(input: {
+  product: ApiProduct;
+  plans: SubscriptionPlan[];
+}) {
+  const store = await ensureStore();
+  store.products = [
+    normalizeProduct(input.product),
+    ...store.products.filter((p) => p.id !== input.product.id),
+  ];
+  const otherPlans = store.plans.filter(
+    (p) => p.product_id !== input.product.id,
+  );
+  store.plans = [...input.plans, ...otherPlans];
+  await writeStore(store);
 }
 
 export async function demoUpdateProductHub(
@@ -324,11 +363,22 @@ export async function demoUpdateProductHub(
       features: string[];
       description?: string;
     }[];
+    /** Browser catalog snapshot when Vercel cookie lost the product. */
+    snapshot?: { product: ApiProduct; plans: SubscriptionPlan[] } | null;
   },
 ) {
-  const store = await ensureStore();
-  const product = store.products.find((p) => p.id === productId);
-  if (!product) throw new Error("Product not found");
+  let store = await ensureStore();
+  let product = store.products.find((p) => p.id === productId);
+
+  if (!product && input.snapshot?.product?.id === productId) {
+    await demoUpsertProductSnapshot(input.snapshot);
+    store = await ensureStore();
+    product = store.products.find((p) => p.id === productId);
+  }
+
+  if (!product) {
+    return { missing: true as const };
+  }
 
   product.landing_copy = input.landingCopy;
   product.docs_markdown = input.docsMarkdown;
@@ -345,7 +395,7 @@ export async function demoUpdateProductHub(
 
   await writeStore(store);
   const plans = store.plans.filter((p) => p.product_id === productId);
-  return { product, plans };
+  return { missing: false as const, product, plans };
 }
 
 export async function demoListDeveloperProducts(developerId: string) {
