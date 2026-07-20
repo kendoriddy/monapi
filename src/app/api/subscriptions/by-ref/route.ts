@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { demoGetSubscriptionDetails, isDemoMode } from "@/lib/demo-store";
+import { getAppOrigin } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildGatewayCurl, normalizePaymentReference } from "@/lib/utils";
 
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "ref is required" }, { status: 400 });
   }
 
-  const origin = new URL(request.url).origin;
+  const origin = getAppOrigin(request);
 
   try {
     if (await isDemoMode(request)) {

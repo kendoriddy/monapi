@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
 import { demoListLiveProducts, isDemoMode } from "@/lib/demo-store";
 import { getHeaderState } from "@/lib/header-state";
+import { getAppOriginFromHeaders } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,8 @@ async function loadMarketplaceListings() {
 export default async function HomePage() {
   const user = await getCurrentUser();
   const { experience, runtime, demo } = await getHeaderState();
+  const appOrigin = await getAppOriginFromHeaders();
+  const authCallbackUrl = `${appOrigin}/auth/callback`;
   const listings =
     experience === "subscriber" ? await loadMarketplaceListings() : [];
 
@@ -244,7 +247,7 @@ export default async function HomePage() {
                     <p className="mt-4 text-xs text-[var(--muted)]">
                       Supabase must allow{" "}
                       <code className="text-[var(--accent)]">
-                        http://localhost:3000/auth/callback
+                        {authCallbackUrl}
                       </code>{" "}
                       under Authentication → URL Configuration, and GitHub must
                       be enabled under Authentication → Providers.

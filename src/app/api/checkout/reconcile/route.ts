@@ -5,6 +5,7 @@ import {
   findSubscriptionByPaymentReference,
   provisionFromPaymentReference,
 } from "@/lib/provision";
+import { getAppOrigin } from "@/lib/origin";
 import { normalizePaymentReference } from "@/lib/utils";
 
 /**
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "ref is required" }, { status: 400 });
     }
 
-    const origin = new URL(request.url).origin;
+    const origin = getAppOrigin(request);
 
     const existing = await findSubscriptionByPaymentReference(paymentReference);
     if (existing) {

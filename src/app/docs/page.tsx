@@ -7,12 +7,13 @@ const envVars = [
   ["NEXT_PUBLIC_SUPABASE_URL", "Supabase project URL"],
   ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "Supabase anon/public key"],
   ["SUPABASE_SERVICE_ROLE_KEY", "Service role (webhooks + gateway)"],
+  ["NEXT_PUBLIC_APP_URL", "Public site URL (https://your-app.vercel.app)"],
   ["MONNIFY_API_KEY", "Monnify Sandbox API key"],
   ["MONNIFY_SECRET_KEY", "Monnify secret + webhook HMAC"],
   ["MONNIFY_CONTRACT_CODE", "Monnify contract code"],
   ["OPENAI_API_KEY or GEMINI_API_KEY", "AI tiers + docs"],
   ["RESEND_API_KEY", "API key delivery emails"],
-  ["MONAPI_DEMO_MODE", "Force local .data demo store"],
+  ["MONAPI_DEMO_MODE", "Force demo mode for all requests"],
   ["MONAPI_GATEWAY_MOCK", "Always mock gateway responses"],
 ];
 

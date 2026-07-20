@@ -10,6 +10,7 @@ import {
   initializeMonnifyTransaction,
   isMonnifyConfigured,
 } from "@/lib/monnify";
+import { getAppOrigin } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import { generateApiKey, generatePaymentReference } from "@/lib/utils";
 
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
 
     const demo = await isDemoMode(request);
     const paymentReference = generatePaymentReference();
-    const origin = new URL(request.url).origin;
+    const origin = getAppOrigin(request);
     const monnifyRedirectUrl = `${origin}/success`;
     const appRedirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
 

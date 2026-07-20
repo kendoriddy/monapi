@@ -52,30 +52,43 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Demo: local store + offline blueprint only — no AI, no Supabase.
+    // Demo: in-memory/local store + offline blueprint only — no AI, no Supabase.
     if (demo) {
-      const blueprint = await generateMonetizationPlans(
-        description,
-        targetUrl,
-        name,
-        { offline: true },
-      );
-      const slug = await resolveUniqueSlug(
-        name || blueprint.product_name,
-        true,
-      );
-      const { product, plans } = await demoCreateProduct({
-        developerId: user.id,
-        name: name || blueprint.product_name,
-        targetUrl,
-        description,
-        landingCopy: blueprint.landing_copy,
-        docsMarkdown: blueprint.docs_markdown,
-        slug,
-        tiers: blueprint.tiers,
-      });
+      try {
+        const blueprint = await generateMonetizationPlans(
+          description,
+          targetUrl,
+          name,
+          { offline: true },
+        );
+        const slug = await resolveUniqueSlug(
+          name || blueprint.product_name,
+          true,
+        );
+        const { product, plans } = await demoCreateProduct({
+          developerId: user.id,
+          name: name || blueprint.product_name,
+          targetUrl,
+          description,
+          landingCopy: blueprint.landing_copy,
+          docsMarkdown: blueprint.docs_markdown,
+          slug,
+          tiers: blueprint.tiers,
+        });
 
-      return NextResponse.json({ product, plans, blueprint, mode: "demo" });
+        return NextResponse.json({ product, plans, blueprint, mode: "demo" });
+      } catch (error) {
+        console.error("[products] demo create failed", {
+          message: error instanceof Error ? error.message : "unknown",
+        });
+        return NextResponse.json(
+          {
+            error: "Failed to create demo product",
+            detail: error instanceof Error ? error.message : "unknown",
+          },
+          { status: 500 },
+        );
+      }
     }
 
     const blueprint = await generateMonetizationPlans(

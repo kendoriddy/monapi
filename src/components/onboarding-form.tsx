@@ -49,7 +49,12 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         body: JSON.stringify({ name, targetUrl, description }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to generate hub");
+      if (!res.ok) {
+        throw new Error(
+          [data.error, data.detail].filter(Boolean).join(": ") ||
+            "Failed to generate hub",
+        );
+      }
 
       const blueprint = data.blueprint as {
         product_name: string;

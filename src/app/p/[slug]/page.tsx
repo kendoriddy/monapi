@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { CheckoutForm } from "@/components/checkout-form";
 import { ProductDocs } from "@/components/product-docs";
@@ -7,6 +6,7 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { demoGetProductBySlug, isDemoMode } from "@/lib/demo-store";
 import { getHeaderState } from "@/lib/header-state";
+import { getAppOriginFromHeaders } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { buildGatewayCurl } from "@/lib/utils";
@@ -51,10 +51,7 @@ export default async function PublicProductPage({
 
   const { product, plans } = data;
   const { experience, runtime, demo } = await getHeaderState();
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? "http";
-  const origin = `${proto}://${host}`;
+  const origin = await getAppOriginFromHeaders();
   const quickstartCurl = buildGatewayCurl(
     origin,
     product.slug,

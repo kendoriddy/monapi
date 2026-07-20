@@ -4,6 +4,7 @@ import {
   isMonnifyConfigured,
   verifyMonnifySignature,
 } from "@/lib/monnify";
+import { getAppOrigin } from "@/lib/origin";
 import { provisionFromPaymentReference } from "@/lib/provision";
 
 export async function POST(request: Request) {
@@ -58,7 +59,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = new URL(request.url).origin;
+    const origin = getAppOrigin(request);
     const result = await provisionFromPaymentReference({
       paymentReference: payment.paymentReference,
       customerEmail: payment.customerEmail || undefined,

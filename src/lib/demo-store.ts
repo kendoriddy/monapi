@@ -27,12 +27,24 @@ type DemoStore = {
 
 const STORE_PATH = path.join(process.cwd(), ".data", "demo-store.json");
 
+type GlobalDemo = typeof globalThis & {
+  __monapiDemoStore?: DemoStore;
+  __monapiDemoUseMemory?: boolean;
+};
+
 const emptyStore = (): DemoStore => ({
   products: [],
   plans: [],
   subscriptions: [],
   pendingCheckouts: [],
 });
+
+function preferMemoryStore() {
+  // Vercel (and similar) have no durable local disk for `.data/`.
+  return (
+    process.env.VERCEL === "1" || process.env.MONAPI_DEMO_MEMORY === "true"
+  );
+}
 
 function normalizeProduct(p: ApiProduct): ApiProduct {
   return {
@@ -51,7 +63,21 @@ function normalizeSubscription(s: CustomerSubscription): CustomerSubscription {
   };
 }
 
+function memoryStore(): DemoStore {
+  const g = globalThis as GlobalDemo;
+  if (!g.__monapiDemoStore) {
+    g.__monapiDemoStore = emptyStore();
+  }
+  return g.__monapiDemoStore;
+}
+
 async function ensureStore(): Promise<DemoStore> {
+  const g = globalThis as GlobalDemo;
+  if (g.__monapiDemoUseMemory || preferMemoryStore()) {
+    g.__monapiDemoUseMemory = true;
+    return memoryStore();
+  }
+
   try {
     const raw = await fs.readFile(STORE_PATH, "utf8");
     const parsed = JSON.parse(raw) as DemoStore;
@@ -61,16 +87,40 @@ async function ensureStore(): Promise<DemoStore> {
       subscriptions: (parsed.subscriptions ?? []).map(normalizeSubscription),
     };
   } catch {
-    const store = emptyStore();
-    await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
-    await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
-    return store;
+    // Local disk unavailable (e.g. serverless) — fall back to memory.
+    try {
+      const store = emptyStore();
+      await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
+      await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
+      return store;
+    } catch {
+      console.warn(
+        "[demo-store] filesystem unavailable — using in-memory demo store",
+      );
+      g.__monapiDemoUseMemory = true;
+      return memoryStore();
+    }
   }
 }
 
 async function writeStore(store: DemoStore) {
-  await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
-  await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
+  const g = globalThis as GlobalDemo;
+  if (g.__monapiDemoUseMemory || preferMemoryStore()) {
+    g.__monapiDemoUseMemory = true;
+    g.__monapiDemoStore = store;
+    return;
+  }
+
+  try {
+    await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
+    await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
+  } catch {
+    console.warn(
+      "[demo-store] write failed — switching to in-memory demo store",
+    );
+    g.__monapiDemoUseMemory = true;
+    g.__monapiDemoStore = store;
+  }
 }
 
 export function isSupabaseConfiguredForProd() {

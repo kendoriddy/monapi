@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { getAppOrigin } from "@/lib/origin";
 
 /**
  * OAuth PKCE callback. Session cookies must be written onto the redirect
@@ -7,7 +8,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * NextResponse.redirect().
  */
 export async function GET(request: NextRequest) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
+  const origin = getAppOrigin(request);
   const code = searchParams.get("code");
   const oauthError = searchParams.get("error");
   const oauthErrorDescription = searchParams.get("error_description");
