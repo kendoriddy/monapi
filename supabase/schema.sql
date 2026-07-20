@@ -19,6 +19,8 @@ create table if not exists api_products (
   target_url text not null,
   description text,
   landing_copy text,
+  slug text unique not null,
+  docs_markdown text,
   is_live boolean default false not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -44,6 +46,9 @@ create table if not exists customer_subscriptions (
   api_key text unique not null,
   status text not null default 'active',
   monnify_transaction_reference text unique,
+  requests_this_month integer not null default 0,
+  usage_reset_at timestamp with time zone,
+  email_preview jsonb,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

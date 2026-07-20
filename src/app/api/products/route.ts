@@ -1,11 +1,30 @@
 import { NextResponse } from "next/server";
 import { generateMonetizationPlans } from "@/lib/ai";
 import { getCurrentUser } from "@/lib/auth";
-import {
-  demoCreateProduct,
-  isDemoMode,
-} from "@/lib/demo-store";
+import { demoCreateProduct, isDemoMode } from "@/lib/demo-store";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { slugifyProductName, uniqueSlug } from "@/lib/utils";
+
+async function resolveUniqueSlug(
+  name: string,
+  excludeProductId?: string,
+): Promise<string> {
+  const base = slugifyProductName(name);
+  if (isDemoMode()) {
+    const { demoListDeveloperProducts } = await import("@/lib/demo-store");
+    const products = await demoListDeveloperProducts("demo-developer");
+    const taken = new Set(
+      products.filter((p) => p.id !== excludeProductId).map((p) => p.slug),
+    );
+    return uniqueSlug(base, taken);
+  }
+  const supabase = createServiceClient();
+  const { data } = await supabase.from("api_products").select("slug");
+  const taken = new Set(
+    (data ?? []).map((r) => r.slug as string).filter(Boolean),
+  );
+  return uniqueSlug(base, taken);
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +50,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const blueprint = await generateMonetizationPlans(description, targetUrl);
+    const blueprint = await generateMonetizationPlans(
+      description,
+      targetUrl,
+      name,
+    );
+    const slug = await resolveUniqueSlug(name || blueprint.product_name);
 
     if (isDemoMode()) {
       const { product, plans } = await demoCreateProduct({
@@ -40,6 +64,8 @@ export async function POST(request: Request) {
         targetUrl,
         description,
         landingCopy: blueprint.landing_copy,
+        docsMarkdown: blueprint.docs_markdown,
+        slug,
         tiers: blueprint.tiers,
       });
 
@@ -48,7 +74,6 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
 
-    // Ensure profile exists
     await supabase.from("profiles").upsert({
       id: user.id,
       email: user.email,
@@ -64,6 +89,8 @@ export async function POST(request: Request) {
         target_url: targetUrl,
         description,
         landing_copy: blueprint.landing_copy,
+        slug,
+        docs_markdown: blueprint.docs_markdown,
         is_live: false,
       })
       .select()
@@ -96,7 +123,6 @@ export async function POST(request: Request) {
       console.error("[products] plans insert failed", {
         message: plansError.message,
       });
-      // Cleanup orphan product via service role if needed
       try {
         const service = createServiceClient();
         await service.from("api_products").delete().eq("id", product.id);

@@ -36,10 +36,15 @@ export async function POST(request: Request) {
       const valid = verifyMonnifySignature(payload, headerHash);
       if (!valid) {
         console.error("[webhook/monnify] signature verification failed");
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+        return NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 401 },
+        );
       }
     } else if (!isDemoSimulate && !isMonnifyConfigured()) {
-      console.error("[webhook/monnify] rejecting unsigned webhook without demo flag");
+      console.error(
+        "[webhook/monnify] rejecting unsigned webhook without demo flag",
+      );
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -62,31 +67,32 @@ export async function POST(request: Request) {
     }
 
     let planId = "";
-    let productId = "";
     let customerEmail = payment.customerEmail;
     let customerName = payment.customerName || "API Customer";
     let productName = "API Product";
     let planName = "Plan";
-    let targetUrl = "https://api.example.com";
+    let productSlug = "api-product";
+    const origin = new URL(request.url).origin;
 
     if (isDemoMode()) {
       const pending = await demoGetPendingCheckout(payment.paymentReference);
       if (!pending) {
-        // Free-tier / already provisioned path
-        console.info("[webhook/monnify] no pending checkout (may already be provisioned)", {
-          paymentReference: payment.paymentReference,
-        });
+        console.info(
+          "[webhook/monnify] no pending checkout (may already be provisioned)",
+          {
+            paymentReference: payment.paymentReference,
+          },
+        );
         return NextResponse.json({ ok: true, alreadyProcessed: true });
       }
       planId = pending.planId;
-      productId = pending.productId;
       customerEmail = customerEmail || pending.customerEmail;
       customerName = customerName || pending.customerName;
 
-      const { product, plans } = await demoGetProduct(productId);
+      const { product, plans } = await demoGetProduct(pending.productId);
       const plan = plans.find((p) => p.id === planId);
       productName = product?.name ?? productName;
-      targetUrl = product?.target_url ?? targetUrl;
+      productSlug = product?.slug ?? productSlug;
       planName = plan?.name ?? planName;
     } else {
       const supabase = createServiceClient();
@@ -104,14 +110,13 @@ export async function POST(request: Request) {
       }
 
       planId = pending.plan_id;
-      productId = pending.product_id;
       customerEmail = customerEmail || pending.customer_email;
       customerName = customerName || pending.customer_name || "API Customer";
 
       const { data: product } = await supabase
         .from("api_products")
-        .select("name, target_url")
-        .eq("id", productId)
+        .select("name, slug")
+        .eq("id", pending.product_id)
         .single();
       const { data: plan } = await supabase
         .from("subscription_plans")
@@ -120,7 +125,7 @@ export async function POST(request: Request) {
         .single();
 
       productName = product?.name ?? productName;
-      targetUrl = product?.target_url ?? targetUrl;
+      productSlug = (product?.slug as string) ?? productSlug;
       planName = plan?.name ?? planName;
     }
 
@@ -133,8 +138,17 @@ export async function POST(request: Request) {
     }
 
     const apiKey = generateApiKey();
-    const txnRef =
-      payment.transactionReference || payment.paymentReference;
+    const txnRef = payment.transactionReference || payment.paymentReference;
+
+    const emailResult = await sendApiKeyEmail({
+      to: customerEmail,
+      customerName,
+      productName,
+      planName,
+      apiKey,
+      productSlug,
+      origin,
+    });
 
     let provisionedKey = apiKey;
 
@@ -145,6 +159,7 @@ export async function POST(request: Request) {
         customerName,
         apiKey,
         monnifyTransactionReference: payment.paymentReference,
+        emailPreview: emailResult.preview,
       });
       provisionedKey = sub.api_key;
     } else {
@@ -161,7 +176,6 @@ export async function POST(request: Request) {
         return NextResponse.json({
           ok: true,
           alreadyProcessed: true,
-          // Never log the raw key in production logs — return only to caller
           subscriptionId: existing.id,
         });
       }
@@ -175,6 +189,7 @@ export async function POST(request: Request) {
           api_key: apiKey,
           status: "active",
           monnify_transaction_reference: payment.paymentReference,
+          email_preview: emailResult.preview,
         })
         .select()
         .single();
@@ -196,22 +211,12 @@ export async function POST(request: Request) {
         .eq("payment_reference", payment.paymentReference);
     }
 
-    // Log key presence only — never the secret itself
     console.info("[webhook/monnify] provisioned API key", {
       paymentReference: payment.paymentReference,
       transactionReference: txnRef,
       customerEmail,
       planId,
       keyPrefix: `${provisionedKey.slice(0, 12)}…`,
-    });
-
-    await sendApiKeyEmail({
-      to: customerEmail,
-      customerName,
-      productName,
-      planName,
-      apiKey: provisionedKey,
-      targetUrl,
     });
 
     return NextResponse.json({

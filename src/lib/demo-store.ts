@@ -3,8 +3,10 @@ import path from "path";
 import type {
   ApiProduct,
   CustomerSubscription,
+  EmailPreview,
   SubscriptionPlan,
 } from "@/lib/types";
+import { slugifyProductName, uniqueSlug } from "@/lib/utils";
 
 type PendingCheckout = {
   paymentReference: string;
@@ -32,10 +34,32 @@ const emptyStore = (): DemoStore => ({
   pendingCheckouts: [],
 });
 
+function normalizeProduct(p: ApiProduct): ApiProduct {
+  return {
+    ...p,
+    slug: p.slug ?? slugifyProductName(p.name),
+    docs_markdown: p.docs_markdown ?? null,
+  };
+}
+
+function normalizeSubscription(s: CustomerSubscription): CustomerSubscription {
+  return {
+    ...s,
+    requests_this_month: s.requests_this_month ?? 0,
+    usage_reset_at: s.usage_reset_at ?? null,
+    email_preview: s.email_preview ?? null,
+  };
+}
+
 async function ensureStore(): Promise<DemoStore> {
   try {
     const raw = await fs.readFile(STORE_PATH, "utf8");
-    return JSON.parse(raw) as DemoStore;
+    const parsed = JSON.parse(raw) as DemoStore;
+    return {
+      ...parsed,
+      products: (parsed.products ?? []).map(normalizeProduct),
+      subscriptions: (parsed.subscriptions ?? []).map(normalizeSubscription),
+    };
   } catch {
     const store = emptyStore();
     await fs.mkdir(path.dirname(STORE_PATH), { recursive: true });
@@ -49,8 +73,24 @@ async function writeStore(store: DemoStore) {
   await fs.writeFile(STORE_PATH, JSON.stringify(store, null, 2));
 }
 
+export function isSupabaseConfiguredForProd() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  if (!url || !key) return false;
+  if (
+    url.includes("YOUR_PROJECT") ||
+    key.startsWith("your_") ||
+    key === "your_anon_key"
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function isDemoMode() {
-  return process.env.MONAPI_DEMO_MODE === "true" || !process.env.NEXT_PUBLIC_SUPABASE_URL;
+  return (
+    process.env.MONAPI_DEMO_MODE === "true" || !isSupabaseConfiguredForProd()
+  );
 }
 
 export async function demoCreateProduct(input: {
@@ -59,6 +99,8 @@ export async function demoCreateProduct(input: {
   targetUrl: string;
   description: string;
   landingCopy: string;
+  docsMarkdown: string;
+  slug?: string;
   tiers: {
     name: string;
     price_ngn: number;
@@ -67,6 +109,10 @@ export async function demoCreateProduct(input: {
   }[];
 }) {
   const store = await ensureStore();
+  const taken = new Set(store.products.map((p) => p.slug));
+  const base = input.slug ?? slugifyProductName(input.name);
+  const slug = uniqueSlug(base, taken);
+
   const product: ApiProduct = {
     id: crypto.randomUUID(),
     developer_id: input.developerId,
@@ -74,6 +120,8 @@ export async function demoCreateProduct(input: {
     target_url: input.targetUrl,
     description: input.description,
     landing_copy: input.landingCopy,
+    slug,
+    docs_markdown: input.docsMarkdown,
     is_live: false,
     created_at: new Date().toISOString(),
   };
@@ -102,6 +150,16 @@ export async function demoGetProduct(productId: string) {
   return { product, plans };
 }
 
+export async function demoGetProductBySlug(slug: string) {
+  const store = await ensureStore();
+  const product =
+    store.products.find((p) => p.slug === slug && p.is_live) ?? null;
+  const plans = product
+    ? store.plans.filter((p) => p.product_id === product.id)
+    : [];
+  return { product, plans };
+}
+
 export async function demoPublishProduct(productId: string) {
   const store = await ensureStore();
   const product = store.products.find((p) => p.id === productId);
@@ -109,6 +167,42 @@ export async function demoPublishProduct(productId: string) {
   product.is_live = true;
   await writeStore(store);
   return product;
+}
+
+export async function demoUpdateProductHub(
+  productId: string,
+  input: {
+    landingCopy: string;
+    docsMarkdown: string;
+    tiers: {
+      id: string;
+      price_ngn: number;
+      limit_per_month: number;
+      features: string[];
+      description?: string;
+    }[];
+  },
+) {
+  const store = await ensureStore();
+  const product = store.products.find((p) => p.id === productId);
+  if (!product) throw new Error("Product not found");
+
+  product.landing_copy = input.landingCopy;
+  product.docs_markdown = input.docsMarkdown;
+
+  for (const tier of input.tiers) {
+    const plan = store.plans.find(
+      (p) => p.id === tier.id && p.product_id === productId,
+    );
+    if (!plan) continue;
+    plan.price_ngn = plan.name === "Pro" ? 15000 : tier.price_ngn;
+    plan.limit_per_month = tier.limit_per_month;
+    plan.features = tier.features;
+  }
+
+  await writeStore(store);
+  const plans = store.plans.filter((p) => p.product_id === productId);
+  return { product, plans };
 }
 
 export async function demoListDeveloperProducts(developerId: string) {
@@ -128,8 +222,9 @@ export async function demoSavePendingCheckout(checkout: PendingCheckout) {
 export async function demoGetPendingCheckout(paymentReference: string) {
   const store = await ensureStore();
   return (
-    store.pendingCheckouts.find((c) => c.paymentReference === paymentReference) ??
-    null
+    store.pendingCheckouts.find(
+      (c) => c.paymentReference === paymentReference,
+    ) ?? null
   );
 }
 
@@ -139,6 +234,7 @@ export async function demoProvisionSubscription(input: {
   customerName: string;
   apiKey: string;
   monnifyTransactionReference: string;
+  emailPreview?: EmailPreview | null;
 }) {
   const store = await ensureStore();
   const existing = store.subscriptions.find(
@@ -155,6 +251,9 @@ export async function demoProvisionSubscription(input: {
     api_key: input.apiKey,
     status: "active",
     monnify_transaction_reference: input.monnifyTransactionReference,
+    requests_this_month: 0,
+    usage_reset_at: new Date().toISOString(),
+    email_preview: input.emailPreview ?? null,
     created_at: new Date().toISOString(),
   };
 
@@ -171,10 +270,31 @@ export async function demoGetSubscriptionByReference(reference: string) {
   return (
     store.subscriptions.find(
       (s) =>
-        s.monnify_transaction_reference === reference ||
-        s.id === reference,
+        s.monnify_transaction_reference === reference || s.id === reference,
     ) ?? null
   );
+}
+
+export async function demoGetSubscriptionByApiKey(apiKey: string) {
+  const store = await ensureStore();
+  const sub = store.subscriptions.find(
+    (s) => s.api_key === apiKey && s.status === "active",
+  );
+  if (!sub) return null;
+  const plan = store.plans.find((p) => p.id === sub.plan_id);
+  const product = plan
+    ? store.products.find((p) => p.id === plan.product_id)
+    : null;
+  return { subscription: sub, plan: plan ?? null, product: product ?? null };
+}
+
+export async function demoIncrementUsage(subscriptionId: string) {
+  const store = await ensureStore();
+  const sub = store.subscriptions.find((s) => s.id === subscriptionId);
+  if (!sub) return null;
+  sub.requests_this_month = (sub.requests_this_month ?? 0) + 1;
+  await writeStore(store);
+  return sub;
 }
 
 export async function demoGetSubscriptionsForProduct(productId: string) {
@@ -193,8 +313,7 @@ export async function demoGetSubscriptionsForProduct(productId: string) {
 export async function demoGetSubscriptionDetails(reference: string) {
   const store = await ensureStore();
   const sub = store.subscriptions.find(
-    (s) =>
-      s.monnify_transaction_reference === reference || s.id === reference,
+    (s) => s.monnify_transaction_reference === reference || s.id === reference,
   );
   if (!sub) return null;
 

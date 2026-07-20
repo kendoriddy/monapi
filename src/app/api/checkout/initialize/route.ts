@@ -13,6 +13,28 @@ import {
 import { createServiceClient } from "@/lib/supabase/server";
 import { generateApiKey, generatePaymentReference } from "@/lib/utils";
 
+function demoCheckoutUrl(
+  origin: string,
+  input: {
+    ref: string;
+    amount: number;
+    plan: string;
+    email: string;
+    name: string;
+    product: string;
+  },
+) {
+  const q = new URLSearchParams({
+    ref: input.ref,
+    amount: String(input.amount),
+    plan: input.plan,
+    email: input.email,
+    name: input.name,
+    product: input.product,
+  });
+  return `${origin}/checkout/demo?${q.toString()}`;
+}
+
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as {
@@ -36,6 +58,7 @@ export async function POST(request: Request) {
 
     let productName = "";
     let targetUrl = "";
+    let productSlug = "";
     let planName = "";
     let priceNgn = 0;
 
@@ -53,6 +76,7 @@ export async function POST(request: Request) {
       }
       productName = product.name;
       targetUrl = product.target_url;
+      productSlug = product.slug;
       planName = plan.name;
       priceNgn = Number(plan.price_ngn);
     } else {
@@ -80,6 +104,7 @@ export async function POST(request: Request) {
 
       productName = product.name;
       targetUrl = product.target_url;
+      productSlug = product.slug as string;
       planName = plan.name;
       priceNgn = Number(plan.price_ngn);
     }
@@ -88,9 +113,18 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     const redirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
 
-    // Free tier: provision immediately without Monnify
     if (priceNgn <= 0) {
       const apiKey = generateApiKey();
+      const emailResult = await sendApiKeyEmail({
+        to: customerEmail,
+        customerName,
+        productName,
+        planName,
+        apiKey,
+        productSlug,
+        origin,
+      });
+
       if (isDemoMode()) {
         await demoProvisionSubscription({
           planId,
@@ -98,6 +132,7 @@ export async function POST(request: Request) {
           customerName,
           apiKey,
           monnifyTransactionReference: paymentReference,
+          emailPreview: emailResult.preview,
         });
       } else {
         const supabase = createServiceClient();
@@ -108,17 +143,9 @@ export async function POST(request: Request) {
           api_key: apiKey,
           status: "active",
           monnify_transaction_reference: paymentReference,
+          email_preview: emailResult.preview,
         });
       }
-
-      await sendApiKeyEmail({
-        to: customerEmail,
-        customerName,
-        productName,
-        planName,
-        apiKey,
-        targetUrl,
-      });
 
       return NextResponse.json({
         redirectUrl,
@@ -127,7 +154,6 @@ export async function POST(request: Request) {
       });
     }
 
-    // Persist pending checkout for webhook mapping
     if (isDemoMode()) {
       await demoSavePendingCheckout({
         paymentReference,
@@ -159,43 +185,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Sandbox / demo without Monnify credentials: simulate paid webhook
     if (!isMonnifyConfigured()) {
-      console.warn(
-        "[checkout] Monnify not configured — simulating PAID webhook for demo",
-      );
-
-      const simulateRes = await fetch(`${origin}/api/webhooks/monnify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-monapi-demo-simulate": "1",
-        },
-        body: JSON.stringify({
-          eventData: {
-            paymentStatus: "PAID",
-            paymentReference,
-            transactionReference: paymentReference,
-            amountPaid: priceNgn,
-            paidOn: new Date().toISOString(),
-            customer: { email: customerEmail, name: customerName },
-          },
-        }),
-      });
-
-      if (!simulateRes.ok) {
-        const sim = await simulateRes.json().catch(() => ({}));
-        console.error("[checkout] demo simulate failed", sim);
-        return NextResponse.json(
-          { error: "Demo payment simulation failed" },
-          { status: 500 },
-        );
-      }
-
       return NextResponse.json({
-        redirectUrl,
+        checkoutUrl: demoCheckoutUrl(origin, {
+          ref: paymentReference,
+          amount: priceNgn,
+          plan: planName,
+          email: customerEmail,
+          name: customerName,
+          product: productName,
+        }),
         paymentReference,
-        mode: "demo-simulate",
+        mode: "demo-checkout",
       });
     }
 
@@ -215,43 +216,19 @@ export async function POST(request: Request) {
         mode: "monnify",
       });
     } catch (error) {
-      console.error("[checkout] Monnify init failed — falling back to demo", {
+      console.error("[checkout] Monnify init failed — demo checkout fallback", {
         message: error instanceof Error ? error.message : "unknown",
       });
 
-      // Robust fallback for unexpected Monnify errors during demos
-      const simulateRes = await fetch(`${origin}/api/webhooks/monnify`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-monapi-demo-simulate": "1",
-        },
-        body: JSON.stringify({
-          eventData: {
-            paymentStatus: "PAID",
-            paymentReference,
-            transactionReference: paymentReference,
-            amountPaid: priceNgn,
-            paidOn: new Date().toISOString(),
-            customer: { email: customerEmail, name: customerName },
-          },
-        }),
-      });
-
-      if (!simulateRes.ok) {
-        return NextResponse.json(
-          {
-            error:
-              error instanceof Error
-                ? error.message
-                : "Failed to initialize checkout",
-          },
-          { status: 502 },
-        );
-      }
-
       return NextResponse.json({
-        redirectUrl,
+        checkoutUrl: demoCheckoutUrl(origin, {
+          ref: paymentReference,
+          amount: priceNgn,
+          plan: planName,
+          email: customerEmail,
+          name: customerName,
+          product: productName,
+        }),
         paymentReference,
         mode: "monnify-fallback",
       });
