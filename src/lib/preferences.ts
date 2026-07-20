@@ -1,24 +1,18 @@
 import { cookies } from "next/headers";
+import {
+  evaluateSupabaseConfig,
+  isDemoModeForced,
+  isLiveModeAvailable as envLiveAvailable,
+  isSupabaseReady,
+  liveBlockMessage,
+  type LiveBlockReason,
+} from "@/lib/env";
 
 export const EXPERIENCE_COOKIE = "monapi_experience";
 export const RUNTIME_COOKIE = "monapi_runtime";
 
 export type Experience = "publisher" | "subscriber";
 export type RuntimeMode = "demo" | "live";
-
-function isSupabaseReady() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  if (!url || !key) return false;
-  if (
-    url.includes("YOUR_PROJECT") ||
-    key.startsWith("your_") ||
-    key === "your_anon_key"
-  ) {
-    return false;
-  }
-  return true;
-}
 
 export function parseExperience(value: string | undefined | null): Experience {
   return value === "subscriber" ? "subscriber" : "publisher";
@@ -42,15 +36,24 @@ export async function getRuntimePreference(): Promise<RuntimeMode | undefined> {
 
 /** Live requires real Supabase credentials and no forced demo env. */
 export function isLiveModeAvailable() {
-  return process.env.MONAPI_DEMO_MODE !== "true" && isSupabaseReady();
+  return envLiveAvailable();
+}
+
+export function getLiveBlockReason(): LiveBlockReason {
+  return evaluateSupabaseConfig().blockReason;
+}
+
+export function getLiveBlockMessage() {
+  return liveBlockMessage(getLiveBlockReason());
 }
 
 export function resolveDemoModeFromPreference(
   preference: RuntimeMode | undefined,
 ): boolean {
-  if (process.env.MONAPI_DEMO_MODE === "true") return true;
+  if (isDemoModeForced()) return true;
   if (!isSupabaseReady()) return true;
   if (preference === "demo") return true;
   if (preference === "live") return false;
+  // Default: Live when Supabase is configured (esp. on Vercel production).
   return false;
 }

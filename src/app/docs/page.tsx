@@ -5,19 +5,23 @@ import { getHeaderState } from "@/lib/header-state";
 
 const envVars = [
   ["NEXT_PUBLIC_SUPABASE_URL", "Supabase project URL"],
-  ["NEXT_PUBLIC_SUPABASE_ANON_KEY", "Supabase anon/public key"],
+  [
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+    "Supabase anon/public key (or PUBLISHABLE_KEY)",
+  ],
   ["SUPABASE_SERVICE_ROLE_KEY", "Service role (webhooks + gateway)"],
   ["MONNIFY_API_KEY", "Monnify Sandbox API key"],
   ["MONNIFY_SECRET_KEY", "Monnify secret + webhook HMAC"],
   ["MONNIFY_CONTRACT_CODE", "Monnify contract code"],
   ["OPENAI_API_KEY or GEMINI_API_KEY", "AI tiers + docs"],
   ["RESEND_API_KEY", "API key delivery emails"],
-  ["MONAPI_DEMO_MODE", "Force local .data demo store"],
+  ["MONAPI_DEMO_MODE", "Force demo store (locks Live if true)"],
   ["MONAPI_GATEWAY_MOCK", "Always mock gateway responses"],
 ];
 
 export default async function DocsPage() {
-  const { experience, runtime, liveAvailable } = await getHeaderState();
+  const { experience, runtime, liveAvailable, liveBlockedReason } =
+    await getHeaderState();
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -25,6 +29,7 @@ export default async function DocsPage() {
         experience={experience}
         runtime={runtime}
         liveAvailable={liveAvailable}
+        liveBlockedReason={liveBlockedReason}
         right={
           <Link href="/">
             <Button size="sm">Back to app</Button>

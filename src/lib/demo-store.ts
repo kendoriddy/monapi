@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { isSupabaseReady } from "@/lib/env";
 import type {
   ApiProduct,
   CustomerSubscription,
@@ -74,17 +75,7 @@ async function writeStore(store: DemoStore) {
 }
 
 export function isSupabaseConfiguredForProd() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
-  if (!url || !key) return false;
-  if (
-    url.includes("YOUR_PROJECT") ||
-    key.startsWith("your_") ||
-    key === "your_anon_key"
-  ) {
-    return false;
-  }
-  return true;
+  return isSupabaseReady();
 }
 
 /**

@@ -50,7 +50,8 @@ export default async function PublicProductPage({
   if (!data) notFound();
 
   const { product, plans } = data;
-  const { experience, runtime, liveAvailable } = await getHeaderState();
+  const { experience, runtime, liveAvailable, liveBlockedReason } =
+    await getHeaderState();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "http";
@@ -67,6 +68,7 @@ export default async function PublicProductPage({
         experience={experience}
         runtime={runtime}
         liveAvailable={liveAvailable}
+        liveBlockedReason={liveBlockedReason}
         right={
           <Link href={`/dashboard/${product.id}`}>
             <Button variant="ghost" size="sm">

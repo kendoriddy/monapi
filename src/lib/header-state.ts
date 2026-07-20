@@ -1,5 +1,6 @@
 import {
   getExperience,
+  getLiveBlockMessage,
   getRuntimePreference,
   isLiveModeAvailable,
   resolveDemoModeFromPreference,
@@ -11,6 +12,7 @@ export async function getHeaderState(): Promise<{
   experience: Experience;
   runtime: RuntimeMode;
   liveAvailable: boolean;
+  liveBlockedReason: string;
   demo: boolean;
 }> {
   const experience = await getExperience();
@@ -19,5 +21,11 @@ export async function getHeaderState(): Promise<{
   const demo = resolveDemoModeFromPreference(preference);
   const runtime: RuntimeMode = demo ? "demo" : "live";
 
-  return { experience, runtime, liveAvailable, demo };
+  return {
+    experience,
+    runtime,
+    liveAvailable,
+    liveBlockedReason: getLiveBlockMessage(),
+    demo,
+  };
 }

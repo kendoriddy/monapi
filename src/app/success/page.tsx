@@ -11,7 +11,8 @@ export default async function SuccessPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const { experience, runtime, liveAvailable } = await getHeaderState();
+  const { experience, runtime, liveAvailable, liveBlockedReason } =
+    await getHeaderState();
   const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
   const rawPayment = Array.isArray(params.paymentReference)
     ? params.paymentReference[0]
@@ -27,6 +28,7 @@ export default async function SuccessPage({
         experience={experience}
         runtime={runtime}
         liveAvailable={liveAvailable}
+        liveBlockedReason={liveBlockedReason}
         right={
           <Link href="/">
             <Button variant="ghost" size="sm">

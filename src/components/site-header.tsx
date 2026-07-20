@@ -8,11 +8,13 @@ export function SiteHeader({
   experience,
   runtime,
   liveAvailable,
+  liveBlockedReason,
 }: {
   right?: React.ReactNode;
   experience: Experience;
   runtime: RuntimeMode;
   liveAvailable: boolean;
+  liveBlockedReason?: string;
 }) {
   return (
     <header className="relative z-50 border-b border-[var(--border)] bg-[var(--background)]/80 backdrop-blur">
@@ -33,6 +35,7 @@ export function SiteHeader({
             experience={experience}
             runtime={runtime}
             liveAvailable={liveAvailable}
+            liveBlockedReason={liveBlockedReason}
           />
           {right}
         </div>

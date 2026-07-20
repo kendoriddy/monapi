@@ -42,10 +42,12 @@ export function HeaderControls({
   experience,
   runtime,
   liveAvailable,
+  liveBlockedReason,
 }: {
   experience: Experience;
   runtime: RuntimeMode;
   liveAvailable: boolean;
+  liveBlockedReason?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -162,8 +164,9 @@ export function HeaderControls({
         className="inline-flex h-9 items-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-0.5"
         title={
           liveAvailable
-            ? "Switch between local demo data and live Supabase"
-            : "Add real Supabase credentials in .env.local to enable Live"
+            ? "Switch between demo data and live Supabase"
+            : liveBlockedReason ||
+              "Add Supabase env vars in Vercel and redeploy to enable Live"
         }
       >
         {(["demo", "live"] as const).map((mode) => {
