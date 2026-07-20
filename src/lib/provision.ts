@@ -11,8 +11,9 @@ import { generateApiKey } from "@/lib/utils";
 
 export async function findSubscriptionByPaymentReference(
   paymentReference: string,
+  request?: Request,
 ) {
-  if (await isDemoMode()) {
+  if (await isDemoMode(request)) {
     const details = await demoGetSubscriptionDetails(paymentReference);
     if (!details) return null;
     return { apiKey: details.subscription.api_key };
@@ -37,10 +38,14 @@ export async function provisionFromPaymentReference(input: {
   customerEmail?: string;
   customerName?: string;
   origin: string;
+  request?: Request;
 }) {
-  const { paymentReference, origin } = input;
+  const { paymentReference, origin, request } = input;
 
-  const existing = await findSubscriptionByPaymentReference(paymentReference);
+  const existing = await findSubscriptionByPaymentReference(
+    paymentReference,
+    request,
+  );
   if (existing) {
     return {
       alreadyProcessed: true as const,
@@ -49,7 +54,7 @@ export async function provisionFromPaymentReference(input: {
     };
   }
 
-  if (await isDemoMode()) {
+  if (await isDemoMode(request)) {
     const pending = await demoGetPendingCheckout(paymentReference);
     if (!pending) {
       return { missingPending: true as const };

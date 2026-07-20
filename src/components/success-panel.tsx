@@ -40,8 +40,7 @@ export function SuccessPanel({
       if (reconciled) return;
       reconciled = true;
       try {
-        // Live only — demo never talks to Monnify.
-        if (demoMode) return;
+        // Needed for Demo + real Monnify Sandbox (webhooks can't read demo cookies).
         await fetch("/api/checkout/reconcile", {
           method: "POST",
           headers: runtimeFetchHeaders(demoMode, {
@@ -57,8 +56,8 @@ export function SuccessPanel({
     async function poll() {
       attempts += 1;
       try {
-        // After a couple of polls, verify with Monnify (localhost never gets webhooks)
-        if (!demoMode && (attempts === 2 || attempts === 6)) {
+        // After a couple of polls, verify with Monnify if webhook hasn't landed.
+        if (attempts === 2 || attempts === 6) {
           await tryReconcile();
         }
 

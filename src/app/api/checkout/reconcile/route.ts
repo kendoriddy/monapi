@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { isDemoMode } from "@/lib/demo-store";
+import {
+  attachDemoStoreCookie,
+  getDemoStoreSnapshot,
+  isDemoMode,
+} from "@/lib/demo-store";
 import { isMonnifyConfigured, queryMonnifyTransaction } from "@/lib/monnify";
 import {
   findSubscriptionByPaymentReference,
@@ -9,21 +13,12 @@ import { getAppOrigin } from "@/lib/origin";
 import { normalizePaymentReference } from "@/lib/utils";
 
 /**
- * Fallback when Monnify webhooks cannot reach localhost.
- * Verifies the payment against Monnify's query API, then provisions.
- * Demo mode never calls Monnify — simulated checkout provisions locally.
+ * Fallback when Monnify webhooks cannot reach the server (or demo cookie
+ * store isn't visible to webhooks). Verifies payment via Monnify query API,
+ * then provisions into demo store or Supabase.
  */
 export async function POST(request: Request) {
   try {
-    if (await isDemoMode(request)) {
-      return NextResponse.json({
-        ok: true,
-        ready: false,
-        mode: "demo",
-        message: "Demo mode does not reconcile against Monnify",
-      });
-    }
-
     const body = (await request.json()) as { ref?: string };
     const paymentReference = normalizePaymentReference(body.ref);
 
@@ -32,15 +27,21 @@ export async function POST(request: Request) {
     }
 
     const origin = getAppOrigin(request);
+    const demo = await isDemoMode(request);
 
-    const existing = await findSubscriptionByPaymentReference(paymentReference);
+    const existing = await findSubscriptionByPaymentReference(
+      paymentReference,
+      request,
+    );
     if (existing) {
-      return NextResponse.json({
+      const res = NextResponse.json({
         ok: true,
         ready: true,
         alreadyProcessed: true,
         paymentReference,
       });
+      if (demo) attachDemoStoreCookie(res, await getDemoStoreSnapshot());
+      return res;
     }
 
     if (!isMonnifyConfigured()) {
@@ -72,6 +73,7 @@ export async function POST(request: Request) {
       customerEmail: txn.customerEmail || undefined,
       customerName: txn.customerName || undefined,
       origin,
+      request,
     });
 
     if ("missingPending" in result && result.missingPending) {
@@ -84,14 +86,17 @@ export async function POST(request: Request) {
     console.info("[reconcile] provisioned after Monnify query", {
       paymentReference,
       keyPrefix: `${result.apiKey.slice(0, 12)}…`,
+      demo,
     });
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       ok: true,
       ready: true,
       alreadyProcessed: result.alreadyProcessed,
       paymentReference,
     });
+    if (demo) attachDemoStoreCookie(res, await getDemoStoreSnapshot());
+    return res;
   } catch (error) {
     console.error("[reconcile] failed", {
       message: error instanceof Error ? error.message : "unknown",

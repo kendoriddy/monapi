@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     const monnifyRedirectUrl = `${origin}/success`;
     const appRedirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
 
-    // ── Demo: local store + simulated checkout only ─────────────────
+    // ── Demo: local catalog (no Supabase). Prefer real Monnify Sandbox UI. ─
     if (demo) {
       const { product, plans } = await demoGetProduct(productId);
       if (!product || !product.is_live) {
@@ -122,6 +122,36 @@ export async function POST(request: Request) {
         amount: priceNgn,
         createdAt: new Date().toISOString(),
       });
+      const store = await getDemoStoreSnapshot();
+
+      // Use Monnify's hosted Sandbox checkout (the real modal) when configured.
+      // Our /checkout/demo page is only a filmable fallback.
+      if (isMonnifyConfigured()) {
+        try {
+          const monnify = await initializeMonnifyTransaction({
+            amount: priceNgn,
+            customerName,
+            customerEmail,
+            paymentReference,
+            paymentDescription: `Subscribing to ${planName} for ${productName}`,
+            redirectUrl: monnifyRedirectUrl,
+          });
+          const monnifyRes = NextResponse.json({
+            checkoutUrl: monnify.checkoutUrl,
+            paymentReference: monnify.paymentReference,
+            mode: "demo-monnify",
+          });
+          attachDemoStoreCookie(monnifyRes, store);
+          return monnifyRes;
+        } catch (error) {
+          console.error(
+            "[checkout] demo Monnify init failed — simulated checkout fallback",
+            {
+              message: error instanceof Error ? error.message : "unknown",
+            },
+          );
+        }
+      }
 
       const checkoutRes = NextResponse.json({
         checkoutUrl: demoCheckoutUrl(origin, {
@@ -135,7 +165,7 @@ export async function POST(request: Request) {
         paymentReference,
         mode: "demo-checkout",
       });
-      attachDemoStoreCookie(checkoutRes, await getDemoStoreSnapshot());
+      attachDemoStoreCookie(checkoutRes, store);
       return checkoutRes;
     }
 
