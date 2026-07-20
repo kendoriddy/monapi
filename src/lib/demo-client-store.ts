@@ -158,6 +158,17 @@ export function getDemoProductBySlugClient(slug: string): {
   return { product, plans };
 }
 
+export function getDemoProductByIdClient(productId: string): {
+  product: ApiProduct;
+  plans: SubscriptionPlan[];
+} | null {
+  const catalog = readStorage();
+  const product = catalog.products.find((p) => p.id === productId) ?? null;
+  if (!product) return null;
+  const plans = catalog.plans.filter((p) => p.product_id === product.id);
+  return { product, plans };
+}
+
 export function listLiveDemoProductsClient(): {
   product: ApiProduct;
   plans: SubscriptionPlan[];

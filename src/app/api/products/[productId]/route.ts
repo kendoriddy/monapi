@@ -23,8 +23,13 @@ export async function PATCH(
     const body = (await request.json()) as {
       landingCopy?: string;
       docsMarkdown?: string;
+      productName?: string;
+      productSlug?: string;
+      targetUrl?: string;
+      description?: string;
       tiers?: {
         id: string;
+        name?: string;
         price_ngn: number;
         limit_per_month: number;
         features: string[];
@@ -54,6 +59,19 @@ export async function PATCH(
         docsMarkdown: body.docsMarkdown,
         tiers,
         snapshot: body.demoSnapshot,
+        synthesize: {
+          developerId: user.id,
+          name: body.productName || body.demoSnapshot?.product?.name,
+          slug: body.productSlug || body.demoSnapshot?.product?.slug,
+          targetUrl:
+            body.targetUrl ||
+            body.demoSnapshot?.product?.target_url ||
+            undefined,
+          description:
+            body.description ||
+            body.demoSnapshot?.product?.description ||
+            undefined,
+        },
       });
       if (updated.missing) {
         return NextResponse.json(

@@ -32,6 +32,8 @@ const STORE_PATH = path.join(process.cwd(), ".data", "demo-store.json");
 type GlobalDemo = typeof globalThis & {
   __monapiDemoStore?: DemoStore;
   __monapiDemoUseMemory?: boolean;
+  /** Set after in-request writes so ensureStore doesn't clobber them with cookie. */
+  __monapiDemoDirty?: boolean;
 };
 
 const emptyStore = (): DemoStore => ({
@@ -145,15 +147,62 @@ async function readDemoCookieValue(): Promise<string | undefined> {
   }
 }
 
+function mergeDemoStores(base: DemoStore, overlay: DemoStore): DemoStore {
+  const productsById = new Map<string, ApiProduct>();
+  for (const p of base.products) productsById.set(p.id, p);
+  for (const p of overlay.products) productsById.set(p.id, p);
+
+  const plansById = new Map<string, SubscriptionPlan>();
+  for (const p of base.plans) plansById.set(p.id, p);
+  for (const p of overlay.plans) plansById.set(p.id, p);
+
+  const subsByRef = new Map<string, CustomerSubscription>();
+  for (const s of base.subscriptions) {
+    subsByRef.set(s.monnify_transaction_reference || s.id, s);
+  }
+  for (const s of overlay.subscriptions) {
+    subsByRef.set(s.monnify_transaction_reference || s.id, s);
+  }
+
+  const pendingByRef = new Map<string, PendingCheckout>();
+  for (const p of base.pendingCheckouts) {
+    pendingByRef.set(p.paymentReference, p);
+  }
+  for (const p of overlay.pendingCheckouts) {
+    pendingByRef.set(p.paymentReference, p);
+  }
+
+  return {
+    products: Array.from(productsById.values()),
+    plans: Array.from(plansById.values()),
+    subscriptions: Array.from(subsByRef.values()),
+    pendingCheckouts: Array.from(pendingByRef.values()),
+  };
+}
+
 async function ensureStore(): Promise<DemoStore> {
   const g = globalThis as GlobalDemo;
   const cookieStore = parseDemoStoreCookie(await readDemoCookieValue());
 
+  // In-request writes must win — otherwise upsert→ensureStore reloads the
+  // stale cookie and drops the product we just rehydrated (PATCH 404).
+  if (g.__monapiDemoDirty && g.__monapiDemoStore) {
+    g.__monapiDemoUseMemory = true;
+    if (cookieStore) {
+      g.__monapiDemoStore = mergeDemoStores(cookieStore, g.__monapiDemoStore);
+    }
+    return g.__monapiDemoStore;
+  }
+
   // Cookie is the source of truth across Vercel serverless isolates.
   if (cookieStore) {
     g.__monapiDemoUseMemory = true;
-    g.__monapiDemoStore = cookieStore;
-    return cookieStore;
+    if (g.__monapiDemoStore) {
+      g.__monapiDemoStore = mergeDemoStores(cookieStore, g.__monapiDemoStore);
+    } else {
+      g.__monapiDemoStore = cookieStore;
+    }
+    return g.__monapiDemoStore;
   }
 
   if (g.__monapiDemoUseMemory || preferMemoryStore()) {
@@ -185,6 +234,7 @@ async function ensureStore(): Promise<DemoStore> {
 async function writeStore(store: DemoStore) {
   const g = globalThis as GlobalDemo;
   g.__monapiDemoStore = store;
+  g.__monapiDemoDirty = true;
 
   if (g.__monapiDemoUseMemory || preferMemoryStore()) {
     g.__monapiDemoUseMemory = true;
@@ -358,6 +408,7 @@ export async function demoUpdateProductHub(
     docsMarkdown: string;
     tiers: {
       id: string;
+      name?: string;
       price_ngn: number;
       limit_per_month: number;
       features: string[];
@@ -365,6 +416,14 @@ export async function demoUpdateProductHub(
     }[];
     /** Browser catalog snapshot when Vercel cookie lost the product. */
     snapshot?: { product: ApiProduct; plans: SubscriptionPlan[] } | null;
+    /** Minimal fields to synthesize a product if snapshot is incomplete. */
+    synthesize?: {
+      developerId: string;
+      name?: string;
+      slug?: string;
+      targetUrl?: string;
+      description?: string;
+    } | null;
   },
 ) {
   let store = await ensureStore();
@@ -372,6 +431,41 @@ export async function demoUpdateProductHub(
 
   if (!product && input.snapshot?.product?.id === productId) {
     await demoUpsertProductSnapshot(input.snapshot);
+    store = await ensureStore();
+    product = store.products.find((p) => p.id === productId);
+  }
+
+  // Last resort: rebuild from PATCH body so publish never depends on cookie.
+  if (!product && input.synthesize) {
+    const name = input.synthesize.name?.trim() || "API Product";
+    const slug =
+      input.synthesize.slug?.trim() ||
+      slugifyProductName(name) ||
+      `api-${productId.slice(0, 8)}`;
+    const synthesized: ApiProduct = {
+      id: productId,
+      developer_id: input.synthesize.developerId,
+      name,
+      target_url: input.synthesize.targetUrl || "https://api.example.com",
+      description: input.synthesize.description ?? null,
+      landing_copy: input.landingCopy,
+      slug,
+      docs_markdown: input.docsMarkdown,
+      is_live: false,
+      created_at: new Date().toISOString(),
+    };
+    const plans: SubscriptionPlan[] = input.tiers.map((tier, index) => ({
+      id: tier.id || crypto.randomUUID(),
+      product_id: productId,
+      name:
+        tier.name || ["Free", "Pro", "Business"][index] || `Tier ${index + 1}`,
+      price_ngn: tier.price_ngn,
+      limit_per_month: tier.limit_per_month,
+      features: tier.features,
+      monnify_plan_code: null,
+      created_at: new Date().toISOString(),
+    }));
+    await demoUpsertProductSnapshot({ product: synthesized, plans });
     store = await ensureStore();
     product = store.products.find((p) => p.id === productId);
   }
@@ -384,10 +478,22 @@ export async function demoUpdateProductHub(
   product.docs_markdown = input.docsMarkdown;
 
   for (const tier of input.tiers) {
-    const plan = store.plans.find(
+    let plan = store.plans.find(
       (p) => p.id === tier.id && p.product_id === productId,
     );
-    if (!plan) continue;
+    if (!plan) {
+      plan = {
+        id: tier.id || crypto.randomUUID(),
+        product_id: productId,
+        name: tier.name || "Plan",
+        price_ngn: tier.price_ngn,
+        limit_per_month: tier.limit_per_month,
+        features: tier.features,
+        monnify_plan_code: null,
+        created_at: new Date().toISOString(),
+      };
+      store.plans.push(plan);
+    }
     plan.price_ngn = plan.name === "Pro" ? 15000 : tier.price_ngn;
     plan.limit_per_month = tier.limit_per_month;
     plan.features = tier.features;

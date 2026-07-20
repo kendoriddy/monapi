@@ -12,7 +12,10 @@ import {
   plansToEditable,
   type EditableTier,
 } from "@/components/hub-preview-editor";
-import { persistDemoProduct } from "@/lib/demo-client-store";
+import {
+  getDemoProductByIdClient,
+  persistDemoProduct,
+} from "@/lib/demo-client-store";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 
@@ -106,15 +109,35 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
     setPublishing(true);
     setError(null);
     try {
+      const stored =
+        demoMode && productId ? getDemoProductByIdClient(productId) : null;
+      const productForSnapshot = demoProduct ?? stored?.product ?? null;
+      const plansForSnapshot =
+        demoPlans.length > 0
+          ? demoPlans
+          : (stored?.plans ??
+            editableTiers.map((t) => ({
+              id: t.id,
+              product_id: productId,
+              name: t.name,
+              price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
+              limit_per_month: t.limit_per_month,
+              features: t.features,
+              monnify_plan_code: null,
+              created_at: new Date().toISOString(),
+            })));
+
       const demoSnapshot =
-        demoMode && demoProduct
+        demoMode && productForSnapshot
           ? {
               product: {
-                ...demoProduct,
+                ...productForSnapshot,
                 landing_copy: landingCopy,
                 docs_markdown: docsMarkdown,
+                name: productTitle || productForSnapshot.name,
+                slug: productSlug || productForSnapshot.slug,
               },
-              plans: demoPlans,
+              plans: plansForSnapshot,
             }
           : null;
 
@@ -126,8 +149,13 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         body: JSON.stringify({
           landingCopy,
           docsMarkdown,
+          productName: productTitle || productForSnapshot?.name,
+          productSlug: productSlug || productForSnapshot?.slug,
+          targetUrl: productForSnapshot?.target_url || targetUrl,
+          description: productForSnapshot?.description || description,
           tiers: editableTiers.map((t) => ({
             id: t.id,
+            name: t.name,
             price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
             limit_per_month: t.limit_per_month,
             features: t.features,

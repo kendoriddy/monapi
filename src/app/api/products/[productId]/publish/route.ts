@@ -36,6 +36,15 @@ export async function POST(
         snapshot = null;
       }
 
+      // Publish can run on a cold isolate — rehydrate from the browser first.
+      if (snapshot?.product?.id === productId) {
+        const { demoUpsertProductSnapshot } = await import("@/lib/demo-store");
+        await demoUpsertProductSnapshot({
+          product: { ...snapshot.product, is_live: true },
+          plans: snapshot.plans,
+        });
+      }
+
       const product = await demoPublishProduct(productId, snapshot);
       if (!product) {
         return NextResponse.json(
