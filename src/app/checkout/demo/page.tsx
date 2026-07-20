@@ -3,11 +3,17 @@ import Link from "next/link";
 import { DemoMonnifyCheckout } from "@/components/demo-monnify-checkout";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { getHeaderState } from "@/lib/header-state";
 
-export default function DemoCheckoutPage() {
+export default async function DemoCheckoutPage() {
+  const { experience, runtime, liveAvailable } = await getHeaderState();
+
   return (
     <div className="flex min-h-screen flex-col bg-[var(--background)]">
       <SiteHeader
+        experience={experience}
+        runtime={runtime}
+        liveAvailable={liveAvailable}
         right={
           <Link href="/">
             <Button variant="ghost" size="sm">

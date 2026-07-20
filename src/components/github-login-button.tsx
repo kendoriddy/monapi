@@ -20,8 +20,11 @@ function GitHubMark({ className }: { className?: string }) {
 
 export function GithubLoginButton() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleLogin() {
+    setError(null);
+
     if (!isSupabaseConfigured()) {
       setLoading(true);
       await new Promise((resolve) => setTimeout(resolve, 550));
@@ -33,32 +36,45 @@ export function GithubLoginButton() {
     try {
       const supabase = createClient();
       const origin = window.location.origin;
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "github",
         options: {
           redirectTo: `${origin}/auth/callback`,
+          skipBrowserRedirect: false,
         },
       });
-      if (error) throw error;
-    } catch (error) {
-      console.error("[auth] GitHub login failed", {
-        message: error instanceof Error ? error.message : "unknown",
-      });
+      if (oauthError) throw oauthError;
+      // If the SDK didn't navigate (rare), fall through manually.
+      if (data?.url) {
+        window.location.assign(data.url);
+      }
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "GitHub sign-in failed";
+      console.error("[auth] GitHub login failed", { message });
+      setError(message);
       setLoading(false);
     }
   }
 
   return (
-    <Button variant="secondary" onClick={handleLogin} disabled={loading}>
-      {loading ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Signing in…
-        </>
-      ) : (
-        <GitHubMark className="h-4 w-4" />
-      )}
-      Continue with GitHub
-    </Button>
+    <div className="space-y-2">
+      <Button variant="secondary" onClick={handleLogin} disabled={loading}>
+        {loading ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Signing in…
+          </>
+        ) : (
+          <GitHubMark className="h-4 w-4" />
+        )}
+        Continue with GitHub
+      </Button>
+      {error ? (
+        <p className="max-w-md text-sm text-red-400" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

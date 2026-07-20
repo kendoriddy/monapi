@@ -2,17 +2,31 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { SuccessPanel } from "@/components/success-panel";
 import { Button } from "@/components/ui/button";
+import { getHeaderState } from "@/lib/header-state";
+import { normalizePaymentReference } from "@/lib/utils";
 
 export default async function SuccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ref?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { ref } = await searchParams;
+  const params = await searchParams;
+  const { experience, runtime, liveAvailable } = await getHeaderState();
+  const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
+  const rawPayment = Array.isArray(params.paymentReference)
+    ? params.paymentReference[0]
+    : params.paymentReference;
+
+  // Prefer Monnify's paymentReference when present; also recover from
+  // corrupted ?ref=MONAPI_x?paymentReference=MONAPI_x URLs.
+  const ref = normalizePaymentReference(rawPayment || rawRef);
 
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader
+        experience={experience}
+        runtime={runtime}
+        liveAvailable={liveAvailable}
         right={
           <Link href="/">
             <Button variant="ghost" size="sm">
@@ -23,7 +37,7 @@ export default async function SuccessPage({
       />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-14 sm:px-6">
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-          Step 4 · Webhook provisioning
+          Step 4 · Key provisioning
         </p>
         {ref ? (
           <SuccessPanel paymentRef={ref} />

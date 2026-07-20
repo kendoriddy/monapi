@@ -38,7 +38,7 @@ export async function PATCH(
       features: tier.features.filter(Boolean),
     }));
 
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       const { product, plans } = await demoUpdateProductHub(productId, {
         landingCopy: body.landingCopy,
         docsMarkdown: body.docsMarkdown,

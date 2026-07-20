@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
 import {
-  demoGetPendingCheckout,
-  demoGetProduct,
-  demoProvisionSubscription,
-  isDemoMode,
-} from "@/lib/demo-store";
-import { sendApiKeyEmail } from "@/lib/email";
-import {
   extractMonnifyPaymentStatus,
   isMonnifyConfigured,
   verifyMonnifySignature,
 } from "@/lib/monnify";
-import { createServiceClient } from "@/lib/supabase/server";
-import { generateApiKey } from "@/lib/utils";
+import { provisionFromPaymentReference } from "@/lib/provision";
 
 export async function POST(request: Request) {
   try {
@@ -66,164 +58,34 @@ export async function POST(request: Request) {
       );
     }
 
-    let planId = "";
-    let customerEmail = payment.customerEmail;
-    let customerName = payment.customerName || "API Customer";
-    let productName = "API Product";
-    let planName = "Plan";
-    let productSlug = "api-product";
     const origin = new URL(request.url).origin;
-
-    if (isDemoMode()) {
-      const pending = await demoGetPendingCheckout(payment.paymentReference);
-      if (!pending) {
-        console.info(
-          "[webhook/monnify] no pending checkout (may already be provisioned)",
-          {
-            paymentReference: payment.paymentReference,
-          },
-        );
-        return NextResponse.json({ ok: true, alreadyProcessed: true });
-      }
-      planId = pending.planId;
-      customerEmail = customerEmail || pending.customerEmail;
-      customerName = customerName || pending.customerName;
-
-      const { product, plans } = await demoGetProduct(pending.productId);
-      const plan = plans.find((p) => p.id === planId);
-      productName = product?.name ?? productName;
-      productSlug = product?.slug ?? productSlug;
-      planName = plan?.name ?? planName;
-    } else {
-      const supabase = createServiceClient();
-      const { data: pending } = await supabase
-        .from("pending_checkouts")
-        .select("*")
-        .eq("payment_reference", payment.paymentReference)
-        .maybeSingle();
-
-      if (!pending) {
-        console.info("[webhook/monnify] no pending checkout", {
-          paymentReference: payment.paymentReference,
-        });
-        return NextResponse.json({ ok: true, alreadyProcessed: true });
-      }
-
-      planId = pending.plan_id;
-      customerEmail = customerEmail || pending.customer_email;
-      customerName = customerName || pending.customer_name || "API Customer";
-
-      const { data: product } = await supabase
-        .from("api_products")
-        .select("name, slug")
-        .eq("id", pending.product_id)
-        .single();
-      const { data: plan } = await supabase
-        .from("subscription_plans")
-        .select("name")
-        .eq("id", planId)
-        .single();
-
-      productName = product?.name ?? productName;
-      productSlug = (product?.slug as string) ?? productSlug;
-      planName = plan?.name ?? planName;
-    }
-
-    if (!customerEmail) {
-      console.error("[webhook/monnify] missing customer email");
-      return NextResponse.json(
-        { error: "Missing customer email" },
-        { status: 400 },
-      );
-    }
-
-    const apiKey = generateApiKey();
-    const txnRef = payment.transactionReference || payment.paymentReference;
-
-    const emailResult = await sendApiKeyEmail({
-      to: customerEmail,
-      customerName,
-      productName,
-      planName,
-      apiKey,
-      productSlug,
+    const result = await provisionFromPaymentReference({
+      paymentReference: payment.paymentReference,
+      customerEmail: payment.customerEmail || undefined,
+      customerName: payment.customerName || undefined,
       origin,
     });
 
-    let provisionedKey = apiKey;
-
-    if (isDemoMode()) {
-      const sub = await demoProvisionSubscription({
-        planId,
-        customerEmail,
-        customerName,
-        apiKey,
-        monnifyTransactionReference: payment.paymentReference,
-        emailPreview: emailResult.preview,
+    if ("missingPending" in result && result.missingPending) {
+      console.info("[webhook/monnify] no pending checkout", {
+        paymentReference: payment.paymentReference,
       });
-      provisionedKey = sub.api_key;
-    } else {
-      const supabase = createServiceClient();
-
-      const { data: existing } = await supabase
-        .from("customer_subscriptions")
-        .select("*")
-        .eq("monnify_transaction_reference", payment.paymentReference)
-        .maybeSingle();
-
-      if (existing) {
-        console.info("[webhook/monnify] subscription already exists");
-        return NextResponse.json({
-          ok: true,
-          alreadyProcessed: true,
-          subscriptionId: existing.id,
-        });
-      }
-
-      const { data: sub, error } = await supabase
-        .from("customer_subscriptions")
-        .insert({
-          plan_id: planId,
-          customer_email: customerEmail,
-          customer_name: customerName,
-          api_key: apiKey,
-          status: "active",
-          monnify_transaction_reference: payment.paymentReference,
-          email_preview: emailResult.preview,
-        })
-        .select()
-        .single();
-
-      if (error || !sub) {
-        console.error("[webhook/monnify] insert failed", {
-          message: error?.message,
-        });
-        return NextResponse.json(
-          { error: "Failed to provision subscription" },
-          { status: 500 },
-        );
-      }
-
-      provisionedKey = sub.api_key;
-      await supabase
-        .from("pending_checkouts")
-        .delete()
-        .eq("payment_reference", payment.paymentReference);
+      return NextResponse.json({ ok: true, alreadyProcessed: true });
     }
 
     console.info("[webhook/monnify] provisioned API key", {
       paymentReference: payment.paymentReference,
-      transactionReference: txnRef,
-      customerEmail,
-      planId,
-      keyPrefix: `${provisionedKey.slice(0, 12)}…`,
+      transactionReference: payment.transactionReference,
+      keyPrefix: `${result.apiKey.slice(0, 12)}…`,
+      alreadyProcessed: result.alreadyProcessed,
     });
 
     return NextResponse.json({
       ok: true,
-      provisioned: true,
+      provisioned: !result.alreadyProcessed,
+      alreadyProcessed: result.alreadyProcessed,
       paymentReference: payment.paymentReference,
-      apiKey: provisionedKey,
+      apiKey: result.apiKey,
     });
   } catch (error) {
     console.error("[webhook/monnify] unexpected", {

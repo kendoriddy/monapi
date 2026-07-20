@@ -10,7 +10,7 @@ async function resolveUniqueSlug(
   excludeProductId?: string,
 ): Promise<string> {
   const base = slugifyProductName(name);
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     const { demoListDeveloperProducts } = await import("@/lib/demo-store");
     const products = await demoListDeveloperProducts("demo-developer");
     const taken = new Set(
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     );
     const slug = await resolveUniqueSlug(name || blueprint.product_name);
 
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       const { product, plans } = await demoCreateProduct({
         developerId: user.id,
         name: name || blueprint.product_name,
@@ -73,13 +73,34 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
+    const service = createServiceClient();
 
-    await supabase.from("profiles").upsert({
-      id: user.id,
-      email: user.email,
-      full_name: user.fullName,
-      updated_at: new Date().toISOString(),
-    });
+    // Ensure profile exists for FK api_products.developer_id → profiles.id.
+    // Use service role: users who signed up before the handle_new_user trigger
+    // (or whose client upsert is blocked by RLS) still need a profile row.
+    const { error: profileError } = await service.from("profiles").upsert(
+      {
+        id: user.id,
+        email: user.email,
+        full_name: user.fullName,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
+
+    if (profileError) {
+      console.error("[products] profile upsert failed", {
+        message: profileError.message,
+        userId: user.id,
+      });
+      return NextResponse.json(
+        {
+          error: "Failed to create developer profile",
+          detail: profileError.message,
+        },
+        { status: 500 },
+      );
+    }
 
     const { data: product, error: productError } = await supabase
       .from("api_products")
@@ -99,9 +120,13 @@ export async function POST(request: Request) {
     if (productError || !product) {
       console.error("[products] insert failed", {
         message: productError?.message,
+        userId: user.id,
       });
       return NextResponse.json(
-        { error: "Failed to create API product" },
+        {
+          error: "Failed to create API product",
+          detail: productError?.message,
+        },
         { status: 500 },
       );
     }
@@ -124,7 +149,6 @@ export async function POST(request: Request) {
         message: plansError.message,
       });
       try {
-        const service = createServiceClient();
         await service.from("api_products").delete().eq("id", product.id);
       } catch {
         /* ignore */

@@ -62,7 +62,7 @@ export async function POST(request: Request) {
     let planName = "";
     let priceNgn = 0;
 
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       const { product, plans } = await demoGetProduct(productId);
       if (!product || !product.is_live) {
         return NextResponse.json(
@@ -111,7 +111,10 @@ export async function POST(request: Request) {
 
     const paymentReference = generatePaymentReference();
     const origin = new URL(request.url).origin;
-    const redirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
+    // Bare /success for Monnify — it appends ?paymentReference=…
+    // Free/demo paths use ?ref= themselves (no Monnify append).
+    const monnifyRedirectUrl = `${origin}/success`;
+    const appRedirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
 
     if (priceNgn <= 0) {
       const apiKey = generateApiKey();
@@ -125,7 +128,7 @@ export async function POST(request: Request) {
         origin,
       });
 
-      if (isDemoMode()) {
+      if (await isDemoMode()) {
         await demoProvisionSubscription({
           planId,
           customerEmail,
@@ -148,13 +151,13 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json({
-        redirectUrl,
+        redirectUrl: appRedirectUrl,
         paymentReference,
         mode: "free",
       });
     }
 
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       await demoSavePendingCheckout({
         paymentReference,
         planId,
@@ -207,7 +210,7 @@ export async function POST(request: Request) {
         customerEmail,
         paymentReference,
         paymentDescription: `Subscribing to ${planName} for ${productName}`,
-        redirectUrl,
+        redirectUrl: monnifyRedirectUrl,
       });
 
       return NextResponse.json({

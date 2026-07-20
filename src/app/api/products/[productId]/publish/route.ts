@@ -14,7 +14,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       const product = await demoPublishProduct(productId);
       return NextResponse.json({ product });
     }

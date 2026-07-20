@@ -25,6 +25,27 @@ export function generatePaymentReference() {
   return `MONAPI_${crypto.randomUUID().replace(/-/g, "")}`;
 }
 
+/**
+ * Monnify often appends `?paymentReference=…` onto redirect URLs that already
+ * contain `?ref=…`, producing a corrupted query like:
+ *   ref=MONAPI_abc?paymentReference=MONAPI_abc
+ */
+export function normalizePaymentReference(
+  raw: string | null | undefined,
+): string {
+  if (!raw) return "";
+  let value = raw.trim();
+  try {
+    value = decodeURIComponent(value);
+  } catch {
+    /* keep raw */
+  }
+  // Drop anything after an embedded `?` or `&`
+  value = value.split("?")[0].split("&")[0].trim();
+  const match = value.match(/MONAPI_[A-Za-z0-9]+/);
+  return match?.[0] ?? value;
+}
+
 /** Demo-friendly slug: PlateReader OCR → plate-reader */
 export function slugifyProductName(name: string): string {
   const trimmed = name.trim();

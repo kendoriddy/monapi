@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isDemoMode } from "@/lib/demo-store";
 
 export async function getCurrentUser() {
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     return {
       id: "demo-developer",
       email: "dev@monapi.local",

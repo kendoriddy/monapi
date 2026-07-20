@@ -10,6 +10,7 @@ import {
   demoGetSubscriptionsForProduct,
   isDemoMode,
 } from "@/lib/demo-store";
+import { getHeaderState } from "@/lib/header-state";
 import { buildInsightsSummary } from "@/lib/insights";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
@@ -28,7 +29,7 @@ export default async function DashboardProductPage({
     ReturnType<typeof demoGetSubscriptionsForProduct>
   > = [];
 
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     const result = await demoGetProduct(productId);
     product = result.product;
     plans = result.plans;
@@ -69,6 +70,7 @@ export default async function DashboardProductPage({
 
   if (!product) notFound();
 
+  const { experience, runtime, liveAvailable } = await getHeaderState();
   const insight = buildInsightsSummary(
     subscriptions.filter((s) => s.plan),
     plans,
@@ -77,6 +79,9 @@ export default async function DashboardProductPage({
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader
+        experience={experience}
+        runtime={runtime}
+        liveAvailable={liveAvailable}
         right={
           product.is_live ? (
             <Link href={`/p/${product.slug}`}>
@@ -95,7 +100,7 @@ export default async function DashboardProductPage({
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-8 px-4 py-12 sm:px-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Developer dashboard
+            Publisher dashboard
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-bold text-[var(--foreground)]">
             {product.name}

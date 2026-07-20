@@ -6,12 +6,13 @@ import { ProductDocs } from "@/components/product-docs";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { demoGetProductBySlug, isDemoMode } from "@/lib/demo-store";
+import { getHeaderState } from "@/lib/header-state";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { buildGatewayCurl } from "@/lib/utils";
 
 async function loadProductBySlug(slug: string) {
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     const { product, plans } = await demoGetProductBySlug(slug);
     if (!product) return null;
     return { product, plans };
@@ -49,6 +50,7 @@ export default async function PublicProductPage({
   if (!data) notFound();
 
   const { product, plans } = data;
+  const { experience, runtime, liveAvailable } = await getHeaderState();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "http";
@@ -62,10 +64,13 @@ export default async function PublicProductPage({
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader
+        experience={experience}
+        runtime={runtime}
+        liveAvailable={liveAvailable}
         right={
           <Link href={`/dashboard/${product.id}`}>
             <Button variant="ghost" size="sm">
-              Developer view
+              Publisher dashboard
             </Button>
           </Link>
         }
@@ -74,7 +79,7 @@ export default async function PublicProductPage({
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">
         <div className="animate-in mb-12 max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Customer purchase
+            Subscribe
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight text-[var(--foreground)]">
             {product.name}

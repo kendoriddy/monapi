@@ -87,7 +87,9 @@ export type InitTransactionInput = {
   redirectUrl: string;
 };
 
-export async function initializeMonnifyTransaction(input: InitTransactionInput) {
+export async function initializeMonnifyTransaction(
+  input: InitTransactionInput,
+) {
   const creds = getCredentials();
   if (!creds) {
     throw new Error("Monnify credentials are not configured");
@@ -107,14 +109,17 @@ export async function initializeMonnifyTransaction(input: InitTransactionInput) 
     paymentMethods: ["CARD", "ACCOUNT_TRANSFER"],
   };
 
-  const res = await fetch(`${MONNIFY_BASE}/merchant/transactions/init-transaction`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+  const res = await fetch(
+    `${MONNIFY_BASE}/merchant/transactions/init-transaction`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
     },
-    body: JSON.stringify(payload),
-  });
+  );
 
   let data: MonnifyInitResponse = {};
   try {
@@ -177,7 +182,9 @@ export function verifyMonnifySignature(
   }
 
   const computed = createHmac("sha512", secret)
-    .update(`${paymentReference}|${amountPaid}|${paidOn}|${transactionReference}`)
+    .update(
+      `${paymentReference}|${amountPaid}|${paidOn}|${transactionReference}`,
+    )
     .digest("hex");
 
   try {
@@ -185,6 +192,65 @@ export function verifyMonnifySignature(
   } catch {
     return computed === hashSource;
   }
+}
+
+type MonnifyQueryResponse = {
+  requestSuccessful?: boolean;
+  responseMessage?: string;
+  responseBody?: {
+    paymentStatus?: string;
+    paymentReference?: string;
+    transactionReference?: string;
+    amountPaid?: number | string;
+    paidOn?: string;
+    customer?: { email?: string; name?: string };
+    customerEmail?: string;
+    customerName?: string;
+  };
+};
+
+/** Query Monnify for a transaction by our paymentReference (local webhook fallback). */
+export async function queryMonnifyTransaction(paymentReference: string) {
+  const token = await getMonnifyAccessToken();
+  const url = new URL(`${MONNIFY_BASE}/merchant/transactions/query`);
+  url.searchParams.set("paymentReference", paymentReference);
+
+  const res = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+
+  let data: MonnifyQueryResponse = {};
+  try {
+    data = (await res.json()) as MonnifyQueryResponse;
+  } catch {
+    console.error("[monnify] query returned non-JSON", { status: res.status });
+    throw new Error("Monnify query returned an unexpected response format");
+  }
+
+  if (!res.ok || !data.requestSuccessful || !data.responseBody) {
+    console.error("[monnify] query failed", {
+      status: res.status,
+      message: data.responseMessage ?? "Unexpected Monnify query error",
+    });
+    throw new Error(
+      data.responseMessage ?? "Failed to query Monnify transaction",
+    );
+  }
+
+  const body = data.responseBody;
+  return {
+    status: String(body.paymentStatus ?? "").toUpperCase(),
+    paymentReference: String(body.paymentReference ?? paymentReference),
+    transactionReference: String(body.transactionReference ?? ""),
+    amountPaid: Number(body.amountPaid ?? 0),
+    paidOn: String(body.paidOn ?? ""),
+    customerEmail: String(body.customer?.email ?? body.customerEmail ?? ""),
+    customerName: String(body.customer?.name ?? body.customerName ?? ""),
+  };
 }
 
 export function extractMonnifyPaymentStatus(payload: Record<string, unknown>) {

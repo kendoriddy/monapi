@@ -27,10 +27,30 @@ export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
   useEffect(() => {
     let cancelled = false;
     let attempts = 0;
+    let reconciled = false;
+
+    async function tryReconcile() {
+      if (reconciled) return;
+      reconciled = true;
+      try {
+        await fetch("/api/checkout/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ref: paymentRef }),
+        });
+      } catch {
+        /* poll will keep trying */
+      }
+    }
 
     async function poll() {
       attempts += 1;
       try {
+        // After a couple of polls, verify with Monnify (localhost never gets webhooks)
+        if (attempts === 2 || attempts === 6) {
+          await tryReconcile();
+        }
+
         const res = await fetch(
           `/api/subscriptions/by-ref?ref=${encodeURIComponent(paymentRef)}`,
         );
@@ -42,14 +62,16 @@ export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
           return;
         }
 
-        if (attempts < 20) {
+        if (attempts < 25) {
           setTimeout(poll, 800);
         } else {
-          setError("Still waiting for webhook provisioning. Try refreshing.");
+          setError(
+            "Still waiting for provisioning. If you paid on Monnify Sandbox, refresh once — we will verify the payment directly.",
+          );
         }
       } catch {
         if (!cancelled) {
-          if (attempts < 20) setTimeout(poll, 1000);
+          if (attempts < 25) setTimeout(poll, 1000);
           else setError("Failed to load subscription");
         }
       }

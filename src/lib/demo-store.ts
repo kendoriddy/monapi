@@ -87,10 +87,20 @@ export function isSupabaseConfiguredForProd() {
   return true;
 }
 
-export function isDemoMode() {
-  return (
-    process.env.MONAPI_DEMO_MODE === "true" || !isSupabaseConfiguredForProd()
-  );
+/**
+ * Demo uses the local `.data/demo-store.json` backend.
+ * Preference cookie can force demo even when Supabase is configured;
+ * Live is impossible without real Supabase credentials.
+ */
+export async function isDemoMode() {
+  const { resolveDemoModeFromPreference, getRuntimePreference } =
+    await import("@/lib/preferences");
+  try {
+    const preference = await getRuntimePreference();
+    return resolveDemoModeFromPreference(preference);
+  } catch {
+    return resolveDemoModeFromPreference(undefined);
+  }
 }
 
 export async function demoCreateProduct(input: {
@@ -208,6 +218,26 @@ export async function demoUpdateProductHub(
 export async function demoListDeveloperProducts(developerId: string) {
   const store = await ensureStore();
   return store.products.filter((p) => p.developer_id === developerId);
+}
+
+export async function demoListLiveProducts() {
+  const store = await ensureStore();
+  const seen = new Set<string>();
+  const listings: { product: ApiProduct; plans: SubscriptionPlan[] }[] = [];
+
+  for (const product of store.products) {
+    if (!product.is_live) continue;
+    if (seen.has(product.slug)) continue;
+    seen.add(product.slug);
+    listings.push({
+      product,
+      plans: store.plans
+        .filter((p) => p.product_id === product.id)
+        .sort((a, b) => a.price_ngn - b.price_ngn),
+    });
+  }
+
+  return listings;
 }
 
 export async function demoSavePendingCheckout(checkout: PendingCheckout) {

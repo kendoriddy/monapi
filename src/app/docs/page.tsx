@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { getHeaderState } from "@/lib/header-state";
 
 const envVars = [
   ["NEXT_PUBLIC_SUPABASE_URL", "Supabase project URL"],
@@ -15,10 +16,15 @@ const envVars = [
   ["MONAPI_GATEWAY_MOCK", "Always mock gateway responses"],
 ];
 
-export default function DocsPage() {
+export default async function DocsPage() {
+  const { experience, runtime, liveAvailable } = await getHeaderState();
+
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader
+        experience={experience}
+        runtime={runtime}
+        liveAvailable={liveAvailable}
         right={
           <Link href="/">
             <Button size="sm">Back to app</Button>

@@ -49,7 +49,7 @@ async function resolveContext(
   | { ok: true; ctx: GatewayContext; requests: number; limit: number }
   | { ok: false; status: number; body: Record<string, unknown> }
 > {
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     const { product } = await demoGetProductBySlug(slug);
     if (!product) {
       return {
@@ -175,7 +175,7 @@ async function resolveContext(
 }
 
 async function incrementUsage(subscriptionId: string) {
-  if (isDemoMode()) {
+  if (await isDemoMode()) {
     await demoIncrementUsage(subscriptionId);
     return;
   }
@@ -255,7 +255,7 @@ export async function handleGatewayRequest(
   await incrementUsage(ctx.subscriptionId);
 
   const forceMock =
-    isDemoMode() ||
+    (await isDemoMode()) ||
     process.env.MONAPI_GATEWAY_MOCK === "true" ||
     ctx.product.target_url.includes("example.com") ||
     ctx.product.target_url.includes("platevision.test");

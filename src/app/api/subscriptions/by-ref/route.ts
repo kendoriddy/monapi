@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
 import { demoGetSubscriptionDetails, isDemoMode } from "@/lib/demo-store";
 import { createServiceClient } from "@/lib/supabase/server";
-import { buildGatewayCurl } from "@/lib/utils";
+import { buildGatewayCurl, normalizePaymentReference } from "@/lib/utils";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const ref = searchParams.get("ref");
+  const ref = normalizePaymentReference(
+    searchParams.get("ref") ?? searchParams.get("paymentReference"),
+  );
 
   if (!ref) {
     return NextResponse.json({ error: "ref is required" }, { status: 400 });
@@ -14,7 +16,7 @@ export async function GET(request: Request) {
   const origin = new URL(request.url).origin;
 
   try {
-    if (isDemoMode()) {
+    if (await isDemoMode()) {
       const details = await demoGetSubscriptionDetails(ref);
       if (!details) {
         return NextResponse.json({ ready: false }, { status: 202 });
