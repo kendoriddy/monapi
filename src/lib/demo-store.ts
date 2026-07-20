@@ -92,11 +92,9 @@ export function isSupabaseConfiguredForProd() {
  * Prefer the request header (UI toggle), then cookie, then MONAPI_DEMO_MODE.
  */
 export async function isDemoMode(request?: Request) {
-  const {
-    RUNTIME_HEADER,
-    getRuntimePreference,
-    resolveDemoModeFromPreference,
-  } = await import("@/lib/preferences");
+  const { RUNTIME_HEADER } = await import("@/lib/runtime");
+  const { getRuntimePreference, resolveDemoModeFromPreference } =
+    await import("@/lib/preferences");
 
   if (process.env.MONAPI_DEMO_MODE === "true") return true;
 

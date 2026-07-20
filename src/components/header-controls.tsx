@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Code2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Experience, RuntimeMode } from "@/lib/preferences";
+import type { Experience, RuntimeMode } from "@/lib/runtime";
 
 const EXPERIENCES: {
   id: Experience;

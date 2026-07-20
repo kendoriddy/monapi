@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Zap } from "lucide-react";
 import { HeaderControls } from "@/components/header-controls";
-import type { Experience, RuntimeMode } from "@/lib/preferences";
+import type { Experience, RuntimeMode } from "@/lib/runtime";
 
 export function SiteHeader({
   right,
