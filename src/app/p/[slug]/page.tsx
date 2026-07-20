@@ -50,7 +50,7 @@ export default async function PublicProductPage({
   if (!data) notFound();
 
   const { product, plans } = data;
-  const { experience, runtime } = await getHeaderState();
+  const { experience, runtime, demo } = await getHeaderState();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const proto = h.get("x-forwarded-proto") ?? "http";
@@ -93,6 +93,7 @@ export default async function PublicProductPage({
             productId={product.id}
             productName={product.name}
             plans={plans}
+            demoMode={demo}
           />
         </section>
 

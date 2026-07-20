@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   const origin = new URL(request.url).origin;
 
   try {
-    if (await isDemoMode()) {
+    if (await isDemoMode(request)) {
       const details = await demoGetSubscriptionDetails(ref);
       if (!details) {
         return NextResponse.json({ ready: false }, { status: 202 });

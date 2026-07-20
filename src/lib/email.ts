@@ -30,6 +30,8 @@ export async function sendApiKeyEmail(input: {
   apiKey: string;
   productSlug: string;
   origin: string;
+  /** Demo mode: never call Resend. */
+  offline?: boolean;
 }) {
   const resendKey = process.env.RESEND_API_KEY;
   const from =
@@ -56,11 +58,16 @@ export async function sendApiKeyEmail(input: {
     sent: false,
   };
 
-  if (!resendKey) {
-    console.info("[email] RESEND_API_KEY missing — skipping send", {
-      to: input.to,
-      product: input.productName,
-    });
+  if (input.offline || !resendKey) {
+    console.info(
+      input.offline
+        ? "[email] demo/offline — skipping Resend"
+        : "[email] RESEND_API_KEY missing — skipping send",
+      {
+        to: input.to,
+        product: input.productName,
+      },
+    );
     return { sent: false as const, curlSnippet, preview };
   }
 

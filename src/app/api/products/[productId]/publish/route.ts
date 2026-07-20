@@ -4,17 +4,17 @@ import { demoPublishProduct, isDemoMode } from "@/lib/demo-store";
 import { createClient } from "@/lib/supabase/server";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ productId: string }> },
 ) {
   try {
     const { productId } = await context.params;
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    if (await isDemoMode()) {
+    if (await isDemoMode(request)) {
       const product = await demoPublishProduct(productId);
       return NextResponse.json({ product });
     }

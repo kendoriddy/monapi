@@ -11,7 +11,7 @@ export default async function SuccessPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const params = await searchParams;
-  const { experience, runtime } = await getHeaderState();
+  const { experience, runtime, demo } = await getHeaderState();
   const rawRef = Array.isArray(params.ref) ? params.ref[0] : params.ref;
   const rawPayment = Array.isArray(params.paymentReference)
     ? params.paymentReference[0]
@@ -39,7 +39,7 @@ export default async function SuccessPage({
           Step 4 · Key provisioning
         </p>
         {ref ? (
-          <SuccessPanel paymentRef={ref} />
+          <SuccessPanel paymentRef={ref} demoMode={demo} />
         ) : (
           <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
             Missing payment reference. Complete a checkout from a live product

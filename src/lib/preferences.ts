@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 
 export const EXPERIENCE_COOKIE = "monapi_experience";
 export const RUNTIME_COOKIE = "monapi_runtime";
+/** Client → API header so Demo never accidentally hits Live backends. */
+export const RUNTIME_HEADER = "x-monapi-runtime";
 
 export type Experience = "publisher" | "subscriber";
 export type RuntimeMode = "demo" | "live";

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Copy, Loader2, Mail, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { EmailPreview } from "@/lib/types";
 
 type SubscriptionPayload = {
@@ -17,7 +18,13 @@ type SubscriptionPayload = {
   emailPreview: EmailPreview | null;
 };
 
-export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
+export function SuccessPanel({
+  paymentRef,
+  demoMode = false,
+}: {
+  paymentRef: string;
+  demoMode?: boolean;
+}) {
   const [data, setData] = useState<SubscriptionPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"key" | "curl" | null>(null);
@@ -33,9 +40,13 @@ export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
       if (reconciled) return;
       reconciled = true;
       try {
+        // Live only — demo never talks to Monnify.
+        if (demoMode) return;
         await fetch("/api/checkout/reconcile", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: runtimeFetchHeaders(demoMode, {
+            "Content-Type": "application/json",
+          }),
           body: JSON.stringify({ ref: paymentRef }),
         });
       } catch {
@@ -47,12 +58,13 @@ export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
       attempts += 1;
       try {
         // After a couple of polls, verify with Monnify (localhost never gets webhooks)
-        if (attempts === 2 || attempts === 6) {
+        if (!demoMode && (attempts === 2 || attempts === 6)) {
           await tryReconcile();
         }
 
         const res = await fetch(
           `/api/subscriptions/by-ref?ref=${encodeURIComponent(paymentRef)}`,
+          { headers: runtimeFetchHeaders(demoMode) },
         );
         const json = await res.json();
         if (cancelled) return;
@@ -81,7 +93,7 @@ export function SuccessPanel({ paymentRef }: { paymentRef: string }) {
     return () => {
       cancelled = true;
     };
-  }, [paymentRef]);
+  }, [paymentRef, demoMode]);
 
   async function copy(text: string, kind: "key" | "curl") {
     await navigator.clipboard.writeText(text);

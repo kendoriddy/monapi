@@ -74,6 +74,7 @@ export async function provisionFromPaymentReference(input: {
       apiKey,
       productSlug,
       origin,
+      offline: true,
     });
 
     const sub = await demoProvisionSubscription({

@@ -9,7 +9,7 @@ export async function PATCH(
 ) {
   try {
     const { productId } = await context.params;
-    const user = await getCurrentUser();
+    const user = await getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -38,7 +38,7 @@ export async function PATCH(
       features: tier.features.filter(Boolean),
     }));
 
-    if (await isDemoMode()) {
+    if (await isDemoMode(request)) {
       const { product, plans } = await demoUpdateProductHub(productId, {
         landingCopy: body.landingCopy,
         docsMarkdown: body.docsMarkdown,

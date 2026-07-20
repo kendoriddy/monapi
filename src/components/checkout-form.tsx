@@ -6,15 +6,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PricingCards } from "@/components/pricing-cards";
+import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { SubscriptionPlan } from "@/lib/types";
 
 type Props = {
   productId: string;
   productName: string;
   plans: SubscriptionPlan[];
+  demoMode?: boolean;
 };
 
-export function CheckoutForm({ productId, productName, plans }: Props) {
+export function CheckoutForm({
+  productId,
+  productName,
+  plans,
+  demoMode = false,
+}: Props) {
   const [selectedPlanId, setSelectedPlanId] = useState(
     plans.find((p) => p.name === "Pro")?.id ?? plans[0]?.id ?? "",
   );
@@ -32,7 +39,9 @@ export function CheckoutForm({ productId, productName, plans }: Props) {
     try {
       const res = await fetch("/api/checkout/initialize", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: runtimeFetchHeaders(demoMode, {
+          "Content-Type": "application/json",
+        }),
         body: JSON.stringify({
           productId,
           planId: selectedPlanId,
@@ -66,7 +75,8 @@ export function CheckoutForm({ productId, productName, plans }: Props) {
     <form onSubmit={handleSubscribe} className="space-y-8">
       <div>
         <p className="mb-3 text-sm text-[var(--muted)]">
-          Choose a plan for <span className="text-[var(--foreground)]">{productName}</span>
+          Choose a plan for{" "}
+          <span className="text-[var(--foreground)]">{productName}</span>
         </p>
         <PricingCards
           plans={plans}
@@ -106,7 +116,12 @@ export function CheckoutForm({ productId, productName, plans }: Props) {
         </p>
       )}
 
-      <Button type="submit" size="lg" disabled={loading || !selectedPlanId} className="w-full sm:w-auto">
+      <Button
+        type="submit"
+        size="lg"
+        disabled={loading || !selectedPlanId}
+        className="w-full sm:w-auto"
+      >
         {loading ? (
           <>
             <Loader2 className="h-4 w-4 animate-spin" />

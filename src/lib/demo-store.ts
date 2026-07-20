@@ -88,17 +88,27 @@ export function isSupabaseConfiguredForProd() {
 }
 
 /**
- * Demo uses the local `.data/demo-store.json` backend.
- * Controlled by the Demo/Live header toggle (cookie), or MONAPI_DEMO_MODE=true.
+ * Demo uses the local `.data/demo-store.json` backend — never Supabase / Monnify / AI.
+ * Prefer the request header (UI toggle), then cookie, then MONAPI_DEMO_MODE.
  */
-export async function isDemoMode() {
-  const { resolveDemoModeFromPreference, getRuntimePreference } =
-    await import("@/lib/preferences");
+export async function isDemoMode(request?: Request) {
+  const {
+    RUNTIME_HEADER,
+    getRuntimePreference,
+    resolveDemoModeFromPreference,
+  } = await import("@/lib/preferences");
+
+  if (process.env.MONAPI_DEMO_MODE === "true") return true;
+
+  const header = request?.headers.get(RUNTIME_HEADER)?.toLowerCase();
+  if (header === "demo") return true;
+  if (header === "live") return false;
+
   try {
     const preference = await getRuntimePreference();
     return resolveDemoModeFromPreference(preference);
   } catch {
-    return resolveDemoModeFromPreference(undefined);
+    return false;
   }
 }
 

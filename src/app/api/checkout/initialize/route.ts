@@ -56,13 +56,14 @@ export async function POST(request: Request) {
       );
     }
 
-    let productName = "";
-    let targetUrl = "";
-    let productSlug = "";
-    let planName = "";
-    let priceNgn = 0;
+    const demo = await isDemoMode(request);
+    const paymentReference = generatePaymentReference();
+    const origin = new URL(request.url).origin;
+    const monnifyRedirectUrl = `${origin}/success`;
+    const appRedirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
 
-    if (await isDemoMode()) {
+    // ── Demo: local store + simulated checkout only ─────────────────
+    if (demo) {
       const { product, plans } = await demoGetProduct(productId);
       if (!product || !product.is_live) {
         return NextResponse.json(
@@ -74,47 +75,90 @@ export async function POST(request: Request) {
       if (!plan) {
         return NextResponse.json({ error: "Plan not found" }, { status: 404 });
       }
-      productName = product.name;
-      targetUrl = product.target_url;
-      productSlug = product.slug;
-      planName = plan.name;
-      priceNgn = Number(plan.price_ngn);
-    } else {
-      const supabase = createServiceClient();
-      const { data: product } = await supabase
-        .from("api_products")
-        .select("*")
-        .eq("id", productId)
-        .eq("is_live", true)
-        .single();
 
-      const { data: plan } = await supabase
-        .from("subscription_plans")
-        .select("*")
-        .eq("id", planId)
-        .eq("product_id", productId)
-        .single();
+      const productName = product.name;
+      const productSlug = product.slug;
+      const planName = plan.name;
+      const priceNgn = Number(plan.price_ngn);
 
-      if (!product || !plan) {
-        return NextResponse.json(
-          { error: "Product or plan not found" },
-          { status: 404 },
-        );
+      if (priceNgn <= 0) {
+        const apiKey = generateApiKey();
+        const emailResult = await sendApiKeyEmail({
+          to: customerEmail,
+          customerName,
+          productName,
+          planName,
+          apiKey,
+          productSlug,
+          origin,
+          offline: true,
+        });
+        await demoProvisionSubscription({
+          planId,
+          customerEmail,
+          customerName,
+          apiKey,
+          monnifyTransactionReference: paymentReference,
+          emailPreview: emailResult.preview,
+        });
+        return NextResponse.json({
+          redirectUrl: appRedirectUrl,
+          paymentReference,
+          mode: "demo-free",
+        });
       }
 
-      productName = product.name;
-      targetUrl = product.target_url;
-      productSlug = product.slug as string;
-      planName = plan.name;
-      priceNgn = Number(plan.price_ngn);
+      await demoSavePendingCheckout({
+        paymentReference,
+        planId,
+        productId,
+        customerEmail,
+        customerName,
+        amount: priceNgn,
+        createdAt: new Date().toISOString(),
+      });
+
+      return NextResponse.json({
+        checkoutUrl: demoCheckoutUrl(origin, {
+          ref: paymentReference,
+          amount: priceNgn,
+          plan: planName,
+          email: customerEmail,
+          name: customerName,
+          product: productName,
+        }),
+        paymentReference,
+        mode: "demo-checkout",
+      });
     }
 
-    const paymentReference = generatePaymentReference();
-    const origin = new URL(request.url).origin;
-    // Bare /success for Monnify — it appends ?paymentReference=…
-    // Free/demo paths use ?ref= themselves (no Monnify append).
-    const monnifyRedirectUrl = `${origin}/success`;
-    const appRedirectUrl = `${origin}/success?ref=${encodeURIComponent(paymentReference)}`;
+    // ── Live: Supabase + Monnify ────────────────────────────────────
+    const supabase = createServiceClient();
+    const { data: product } = await supabase
+      .from("api_products")
+      .select("*")
+      .eq("id", productId)
+      .eq("is_live", true)
+      .single();
+
+    const { data: plan } = await supabase
+      .from("subscription_plans")
+      .select("*")
+      .eq("id", planId)
+      .eq("product_id", productId)
+      .single();
+
+    if (!product || !plan) {
+      return NextResponse.json(
+        { error: "Product or plan not found" },
+        { status: 404 },
+      );
+    }
+
+    const productName = product.name;
+    const productSlug = product.slug as string;
+    const planName = plan.name;
+    const priceNgn = Number(plan.price_ngn);
 
     if (priceNgn <= 0) {
       const apiKey = generateApiKey();
@@ -128,27 +172,15 @@ export async function POST(request: Request) {
         origin,
       });
 
-      if (await isDemoMode()) {
-        await demoProvisionSubscription({
-          planId,
-          customerEmail,
-          customerName,
-          apiKey,
-          monnifyTransactionReference: paymentReference,
-          emailPreview: emailResult.preview,
-        });
-      } else {
-        const supabase = createServiceClient();
-        await supabase.from("customer_subscriptions").insert({
-          plan_id: planId,
-          customer_email: customerEmail,
-          customer_name: customerName,
-          api_key: apiKey,
-          status: "active",
-          monnify_transaction_reference: paymentReference,
-          email_preview: emailResult.preview,
-        });
-      }
+      await supabase.from("customer_subscriptions").insert({
+        plan_id: planId,
+        customer_email: customerEmail,
+        customer_name: customerName,
+        api_key: apiKey,
+        status: "active",
+        monnify_transaction_reference: paymentReference,
+        email_preview: emailResult.preview,
+      });
 
       return NextResponse.json({
         redirectUrl: appRedirectUrl,
@@ -157,35 +189,22 @@ export async function POST(request: Request) {
       });
     }
 
-    if (await isDemoMode()) {
-      await demoSavePendingCheckout({
-        paymentReference,
-        planId,
-        productId,
-        customerEmail,
-        customerName,
-        amount: priceNgn,
-        createdAt: new Date().toISOString(),
+    const { error } = await supabase.from("pending_checkouts").upsert({
+      payment_reference: paymentReference,
+      plan_id: planId,
+      product_id: productId,
+      customer_email: customerEmail,
+      customer_name: customerName,
+      amount: priceNgn,
+    });
+    if (error) {
+      console.error("[checkout] pending insert failed", {
+        message: error.message,
       });
-    } else {
-      const supabase = createServiceClient();
-      const { error } = await supabase.from("pending_checkouts").upsert({
-        payment_reference: paymentReference,
-        plan_id: planId,
-        product_id: productId,
-        customer_email: customerEmail,
-        customer_name: customerName,
-        amount: priceNgn,
-      });
-      if (error) {
-        console.error("[checkout] pending insert failed", {
-          message: error.message,
-        });
-        return NextResponse.json(
-          { error: "Failed to start checkout" },
-          { status: 500 },
-        );
-      }
+      return NextResponse.json(
+        { error: "Failed to start checkout" },
+        { status: 500 },
+      );
     }
 
     if (!isMonnifyConfigured()) {

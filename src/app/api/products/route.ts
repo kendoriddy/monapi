@@ -7,10 +7,11 @@ import { slugifyProductName, uniqueSlug } from "@/lib/utils";
 
 async function resolveUniqueSlug(
   name: string,
+  demo: boolean,
   excludeProductId?: string,
 ): Promise<string> {
   const base = slugifyProductName(name);
-  if (await isDemoMode()) {
+  if (demo) {
     const { demoListDeveloperProducts } = await import("@/lib/demo-store");
     const products = await demoListDeveloperProducts("demo-developer");
     const taken = new Set(
@@ -45,19 +46,24 @@ export async function POST(request: Request) {
       );
     }
 
-    const user = await getCurrentUser();
+    const demo = await isDemoMode(request);
+    const user = await getCurrentUser(request);
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const blueprint = await generateMonetizationPlans(
-      description,
-      targetUrl,
-      name,
-    );
-    const slug = await resolveUniqueSlug(name || blueprint.product_name);
-
-    if (await isDemoMode()) {
+    // Demo: local store + offline blueprint only — no AI, no Supabase.
+    if (demo) {
+      const blueprint = await generateMonetizationPlans(
+        description,
+        targetUrl,
+        name,
+        { offline: true },
+      );
+      const slug = await resolveUniqueSlug(
+        name || blueprint.product_name,
+        true,
+      );
       const { product, plans } = await demoCreateProduct({
         developerId: user.id,
         name: name || blueprint.product_name,
@@ -69,15 +75,20 @@ export async function POST(request: Request) {
         tiers: blueprint.tiers,
       });
 
-      return NextResponse.json({ product, plans, blueprint });
+      return NextResponse.json({ product, plans, blueprint, mode: "demo" });
     }
+
+    const blueprint = await generateMonetizationPlans(
+      description,
+      targetUrl,
+      name,
+    );
+    const slug = await resolveUniqueSlug(name || blueprint.product_name, false);
 
     const supabase = await createClient();
     const service = createServiceClient();
 
     // Ensure profile exists for FK api_products.developer_id → profiles.id.
-    // Use service role: users who signed up before the handle_new_user trigger
-    // (or whose client upsert is blocked by RLS) still need a profile row.
     const { error: profileError } = await service.from("profiles").upsert(
       {
         id: user.id,
@@ -159,7 +170,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ product, plans, blueprint });
+    return NextResponse.json({ product, plans, blueprint, mode: "live" });
   } catch (error) {
     console.error("[products] unexpected error", {
       message: error instanceof Error ? error.message : "unknown",

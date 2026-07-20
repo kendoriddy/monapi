@@ -12,9 +12,10 @@ import {
   plansToEditable,
   type EditableTier,
 } from "@/components/hub-preview-editor";
+import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { SubscriptionPlan } from "@/lib/types";
 
-export function OnboardingForm({ demoMode: _demoMode }: { demoMode: boolean }) {
+export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
   const router = useRouter();
   const [name, setName] = useState("PlateReader OCR");
   const [targetUrl, setTargetUrl] = useState(
@@ -42,7 +43,9 @@ export function OnboardingForm({ demoMode: _demoMode }: { demoMode: boolean }) {
     try {
       const res = await fetch("/api/products", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: runtimeFetchHeaders(demoMode, {
+          "Content-Type": "application/json",
+        }),
         body: JSON.stringify({ name, targetUrl, description }),
       });
       const data = await res.json();
@@ -90,7 +93,9 @@ export function OnboardingForm({ demoMode: _demoMode }: { demoMode: boolean }) {
     try {
       const patchRes = await fetch(`/api/products/${productId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: runtimeFetchHeaders(demoMode, {
+          "Content-Type": "application/json",
+        }),
         body: JSON.stringify({
           landingCopy,
           docsMarkdown,
@@ -110,6 +115,7 @@ export function OnboardingForm({ demoMode: _demoMode }: { demoMode: boolean }) {
 
       const pubRes = await fetch(`/api/products/${productId}/publish`, {
         method: "POST",
+        headers: runtimeFetchHeaders(demoMode),
       });
       const pubData = await pubRes.json();
       if (!pubRes.ok) throw new Error(pubData.error || "Failed to publish");

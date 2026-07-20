@@ -188,7 +188,13 @@ export async function generateMonetizationPlans(
   description: string,
   targetUrl: string,
   productNameHint?: string,
+  options?: { offline?: boolean },
 ): Promise<AiPlanResponse> {
+  // Demo mode must never call OpenAI / Gemini.
+  if (options?.offline) {
+    return fallbackPlans(description, targetUrl, productNameHint);
+  }
+
   const apiKey = process.env.OPENAI_API_KEY || process.env.GEMINI_API_KEY;
   const provider =
     process.env.AI_PROVIDER ||

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isDemoMode } from "@/lib/demo-store";
 import { isMonnifyConfigured, queryMonnifyTransaction } from "@/lib/monnify";
 import {
   findSubscriptionByPaymentReference,
@@ -9,9 +10,19 @@ import { normalizePaymentReference } from "@/lib/utils";
 /**
  * Fallback when Monnify webhooks cannot reach localhost.
  * Verifies the payment against Monnify's query API, then provisions.
+ * Demo mode never calls Monnify — simulated checkout provisions locally.
  */
 export async function POST(request: Request) {
   try {
+    if (await isDemoMode(request)) {
+      return NextResponse.json({
+        ok: true,
+        ready: false,
+        mode: "demo",
+        message: "Demo mode does not reconcile against Monnify",
+      });
+    }
+
     const body = (await request.json()) as { ref?: string };
     const paymentReference = normalizePaymentReference(body.ref);
 
