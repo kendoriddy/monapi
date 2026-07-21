@@ -241,6 +241,28 @@ export function publishProduct(snapshot: {
   return { product, plans };
 }
 
+/** Update landing copy / docs on an already-live demo product. */
+export function updateProductContent(input: {
+  productId: string;
+  landingCopy: string;
+  docsMarkdown: string;
+}): ApiProduct | null {
+  const catalog = getCatalog();
+  const existing = catalog.products.find((p) => p.id === input.productId);
+  if (!existing) return null;
+  const product: ApiProduct = {
+    ...existing,
+    landing_copy: input.landingCopy,
+    docs_markdown: input.docsMarkdown,
+  };
+  catalog.products = [
+    product,
+    ...catalog.products.filter((p) => p.id !== product.id),
+  ];
+  saveCatalog(catalog);
+  return product;
+}
+
 export function getProductBySlug(slug: string): {
   product: ApiProduct;
   plans: SubscriptionPlan[];

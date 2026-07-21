@@ -14,12 +14,12 @@ Toggle **Demo** in the header, then pick **Publisher** (developer) or **Subscrib
 
 ### Developer (Publisher)
 
-| Step | Action                                                                                   |
-| ---- | ---------------------------------------------------------------------------------------- |
-| 1    | **Demo** + **Publisher** → African Location API defaults → **Generate Monetization Hub** |
-| 2    | Edit tiers/docs (Pro locked at **₦15,000**) → **Publish** → `/p/african-location-api`    |
-| 3    | Select **Pro** → **Subscribe** → simulated Monnify → **Pay**                             |
-| 4    | `/success` shows API key, demo inbox, **Run test request** (mock Nigerian states JSON)   |
+| Step | Action                                                                                                                            |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | **Demo** + **Publisher** → African Location API defaults → **Generate Monetization Hub**                                          |
+| 2    | Edit tiers/docs (Pro locked at **₦15,000**) → **Publish** → `/p/african-location-api` (publisher view: docs + Edit, no Subscribe) |
+| 3    | Switch to **Subscriber** → open hub → **Pro** → simulated Monnify → **Pay**                                                       |
+| 4    | `/success` shows API key, demo inbox, **Run test request** (mock Nigerian states JSON)                                            |
 
 ### Subscriber
 

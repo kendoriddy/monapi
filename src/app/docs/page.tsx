@@ -55,8 +55,8 @@ export default async function DocsPage() {
                 Header → <strong>Demo</strong>, then Publisher or Subscriber
               </li>
               <li>
-                Publisher: generate African Location API → edit → publish →
-                `/p/african-location-api`
+                Publisher: generate → publish → hub page (docs + Edit, no
+                Subscribe)
               </li>
               <li>
                 Subscriber: marketplace already has African Location API seeded

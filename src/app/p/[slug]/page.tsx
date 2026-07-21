@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CheckoutForm } from "@/components/checkout-form";
 import { DemoProductClientPage } from "@/components/demo-product-client-page";
+import { PricingCards } from "@/components/pricing-cards";
 import { ProductDocs } from "@/components/product-docs";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,7 @@ export default async function PublicProductPage({
   const { experience, runtime, demo } = await getHeaderState();
   const origin = await getAppOriginFromHeaders();
 
-  // Demo: always client shell reading localStorage catalog (seeded African Location API).
+  // Demo: always client shell reading localStorage catalog.
   if (demo) {
     return (
       <DemoProductClientPage
@@ -59,10 +60,12 @@ export default async function PublicProductPage({
   if (!data) notFound();
 
   const { product, plans } = data;
+  const isPublisher = experience === "publisher";
   const quickstartCurl = buildGatewayCurl(
     origin,
     product.slug,
     "sk_monapi_your_key",
+    product.slug === "african-location-api" ? "states" : "",
   );
 
   return (
@@ -71,18 +74,27 @@ export default async function PublicProductPage({
         experience={experience}
         runtime={runtime}
         right={
-          <Link href={`/dashboard/${product.id}`}>
-            <Button variant="ghost" size="sm">
-              Publisher dashboard
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {isPublisher ? (
+              <Link href="/#onboard">
+                <Button variant="secondary" size="sm">
+                  Edit hub
+                </Button>
+              </Link>
+            ) : null}
+            <Link href={`/dashboard/${product.id}`}>
+              <Button variant="ghost" size="sm">
+                Publisher dashboard
+              </Button>
+            </Link>
+          </div>
         }
       />
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">
         <div className="animate-in mb-12 max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Subscribe
+            {isPublisher ? "Your hub" : "Subscribe"}
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight text-[var(--foreground)]">
             {product.name}
@@ -90,16 +102,32 @@ export default async function PublicProductPage({
           <p className="mt-3 text-[var(--muted)]">
             {product.landing_copy || product.description}
           </p>
+          {isPublisher ? (
+            <p className="mt-4 text-sm text-[var(--muted)]">
+              This is your published hub. Switch to{" "}
+              <strong className="text-[var(--foreground)]">Subscriber</strong>{" "}
+              in the header to see checkout.
+            </p>
+          ) : null}
         </div>
 
-        <section className="mb-14">
-          <CheckoutForm
-            productId={product.id}
-            productName={product.name}
-            plans={plans}
-            demoMode={false}
-          />
-        </section>
+        {isPublisher ? (
+          <section className="mb-14">
+            <h2 className="mb-4 font-[family-name:var(--font-display)] text-xl font-bold text-[var(--foreground)]">
+              Pricing tiers
+            </h2>
+            <PricingCards plans={plans} />
+          </section>
+        ) : (
+          <section className="mb-14">
+            <CheckoutForm
+              productId={product.id}
+              productName={product.name}
+              plans={plans}
+              demoMode={false}
+            />
+          </section>
+        )}
 
         <section className="mb-14 space-y-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
           <div>
@@ -107,7 +135,9 @@ export default async function PublicProductPage({
               Documentation
             </h2>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              Auto-generated quickstart for your API consumers.
+              {isPublisher
+                ? "What your API consumers see after they open this hub."
+                : "Auto-generated quickstart for your API consumers."}
             </p>
           </div>
           {product.docs_markdown ? (
@@ -122,7 +152,9 @@ export default async function PublicProductPage({
             Quick start
           </h2>
           <p className="mt-1 text-sm text-[var(--muted)]">
-            Replace the placeholder key after subscribing.
+            {isPublisher
+              ? "Example curl subscribers will use with their provisioned key."
+              : "Replace the placeholder key after subscribing."}
           </p>
           <pre className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 font-mono text-xs leading-relaxed text-[var(--foreground)]">
             {quickstartCurl}
