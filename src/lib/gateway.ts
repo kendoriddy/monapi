@@ -20,25 +20,84 @@ function startOfUtcMonth() {
 }
 
 function mockResponse(product: ApiProduct, path: string) {
-  const isOcr =
-    product.name.toLowerCase().includes("ocr") ||
-    product.name.toLowerCase().includes("plate");
+  const location =
+    product.slug === "african-location-api" ||
+    product.name.toLowerCase().includes("african location");
+  const normalized = (path || "states").replace(/^\//, "") || "states";
+
+  if (location) {
+    if (normalized.startsWith("distance")) {
+      return {
+        ok: true,
+        monapi: true,
+        product: product.slug,
+        path: `/${normalized}`,
+        mock: {
+          from: { lat: 6.5244, lng: 3.3792, label: "Lagos" },
+          to: { lat: 9.0765, lng: 7.3986, label: "Abuja" },
+          distance_km: 536.2,
+          unit: "km",
+          message: "Distance calculated (Monapi demo gateway)",
+        },
+      };
+    }
+    if (normalized.startsWith("geocode")) {
+      return {
+        ok: true,
+        monapi: true,
+        product: product.slug,
+        path: `/${normalized}`,
+        mock: {
+          query: "Lagos",
+          lat: 6.5244,
+          lng: 3.3792,
+          country: "NG",
+          message: "Geocode resolved (Monapi demo gateway)",
+        },
+      };
+    }
+    return {
+      ok: true,
+      monapi: true,
+      product: product.slug,
+      path: `/${normalized}`,
+      mock: {
+        country: "NG",
+        count: 3,
+        states: [
+          {
+            code: "LA",
+            name: "Lagos",
+            capital: "Ikeja",
+            region: "South West",
+          },
+          {
+            code: "FC",
+            name: "FCT",
+            capital: "Abuja",
+            region: "North Central",
+          },
+          {
+            code: "KN",
+            name: "Kano",
+            capital: "Kano",
+            region: "North West",
+          },
+        ],
+        message: "Nigerian states sample (Monapi demo gateway)",
+      },
+    };
+  }
+
   return {
     ok: true,
     monapi: true,
     product: product.slug,
     path: path || "/",
-    mock: isOcr
-      ? {
-          plate: "ABC-123-XY",
-          confidence: 0.97,
-          region: "NG",
-          message: "License plate detected (Monapi demo gateway)",
-        }
-      : {
-          message: "Request authorized via Monapi gateway",
-          timestamp: new Date().toISOString(),
-        },
+    mock: {
+      message: "Request authorized via Monapi gateway",
+      timestamp: new Date().toISOString(),
+    },
   };
 }
 

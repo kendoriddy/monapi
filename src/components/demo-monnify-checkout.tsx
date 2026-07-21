@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CreditCard, Landmark, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { completePayment, delay } from "@/lib/demo-engine";
 import { formatNgn } from "@/lib/utils";
 
 export function DemoMonnifyCheckout() {
@@ -13,7 +14,6 @@ export function DemoMonnifyCheckout() {
   const amount = Number(params.get("amount") ?? 0);
   const plan = params.get("plan") ?? "Pro";
   const email = params.get("email") ?? "";
-  const name = params.get("name") ?? "Customer";
   const product = params.get("product") ?? "API Product";
 
   const [method, setMethod] = useState<"card" | "transfer">("card");
@@ -25,27 +25,8 @@ export function DemoMonnifyCheckout() {
     setPaying(true);
     setError(null);
     try {
-      const res = await fetch("/api/webhooks/monnify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-monapi-demo-simulate": "1",
-        },
-        body: JSON.stringify({
-          eventData: {
-            paymentStatus: "PAID",
-            paymentReference: ref,
-            transactionReference: ref,
-            amountPaid: amount,
-            paidOn: new Date().toISOString(),
-            customer: { email, name },
-          },
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? "Payment failed");
-      }
+      await delay(700);
+      completePayment(ref, window.location.origin);
       router.push(`/success?ref=${encodeURIComponent(ref)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed");

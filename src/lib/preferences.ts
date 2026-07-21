@@ -1,11 +1,10 @@
 import { cookies } from "next/headers";
 import type { Experience, RuntimeMode } from "@/lib/runtime";
+import { EXPERIENCE_COOKIE, RUNTIME_COOKIE } from "@/lib/preferences-constants";
 
 export type { Experience, RuntimeMode } from "@/lib/runtime";
 export { RUNTIME_HEADER } from "@/lib/runtime";
-
-export const EXPERIENCE_COOKIE = "monapi_experience";
-export const RUNTIME_COOKIE = "monapi_runtime";
+export { EXPERIENCE_COOKIE, RUNTIME_COOKIE } from "@/lib/preferences-constants";
 
 export function parseExperience(value: string | undefined | null): Experience {
   return value === "subscriber" ? "subscriber" : "publisher";

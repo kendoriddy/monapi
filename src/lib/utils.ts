@@ -46,16 +46,16 @@ export function normalizePaymentReference(
   return match?.[0] ?? value;
 }
 
-/** Demo-friendly slug: PlateReader OCR → plate-reader */
+/** Demo-friendly slug: African Location API → african-location-api */
 export function slugifyProductName(name: string): string {
   const trimmed = name.trim();
   const lower = trimmed.toLowerCase();
   if (
-    lower.includes("platereader") ||
-    lower.includes("plate reader") ||
-    lower.includes("plate-reader")
+    lower.includes("african location") ||
+    lower.includes("africanlocations") ||
+    lower === "african-location-api"
   ) {
-    return "plate-reader";
+    return "african-location-api";
   }
   return trimmed
     .toLowerCase()
@@ -77,6 +77,11 @@ export function gatewayUrl(origin: string, slug: string, path = "") {
   return path ? `${base}/${path.replace(/^\//, "")}` : base;
 }
 
-export function buildGatewayCurl(origin: string, slug: string, apiKey: string) {
-  return `curl -X GET "${gatewayUrl(origin, slug)}" \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json"`;
+export function buildGatewayCurl(
+  origin: string,
+  slug: string,
+  apiKey: string,
+  path = "",
+) {
+  return `curl -X GET "${gatewayUrl(origin, slug, path)}" \\\n  -H "Authorization: Bearer ${apiKey}" \\\n  -H "Content-Type: application/json"`;
 }

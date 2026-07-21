@@ -2,23 +2,19 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { ArrowRight } from "lucide-react";
 import { AuthErrorBanner } from "@/components/auth-error-banner";
+import { DemoMarketplaceClient } from "@/components/demo-marketplace-client";
 import { GithubLoginButton } from "@/components/github-login-button";
 import { MarketplaceGrid } from "@/components/marketplace-grid";
 import { OnboardingForm } from "@/components/onboarding-form";
 import { SiteHeader } from "@/components/site-header";
 import { getCurrentUser } from "@/lib/auth";
-import { demoListLiveProducts, isDemoMode } from "@/lib/demo-store";
 import { getHeaderState } from "@/lib/header-state";
 import { getAppOriginFromHeaders } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 
-async function loadMarketplaceListings() {
-  if (await isDemoMode()) {
-    return demoListLiveProducts();
-  }
-
+async function loadLiveMarketplaceListings() {
   const supabase = createServiceClient();
   const { data: products } = await supabase
     .from("api_products")
@@ -49,7 +45,9 @@ export default async function HomePage() {
   const appOrigin = await getAppOriginFromHeaders();
   const authCallbackUrl = `${appOrigin}/auth/callback`;
   const listings =
-    experience === "subscriber" ? await loadMarketplaceListings() : [];
+    experience === "subscriber" && !demo
+      ? await loadLiveMarketplaceListings()
+      : [];
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -140,7 +138,11 @@ export default async function HomePage() {
                     checkout.
                   </p>
                 </div>
-                <MarketplaceGrid listings={listings} />
+                {demo ? (
+                  <DemoMarketplaceClient />
+                ) : (
+                  <MarketplaceGrid listings={listings} />
+                )}
               </div>
             </section>
           </>

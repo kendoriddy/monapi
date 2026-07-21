@@ -4,9 +4,10 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Copy, Loader2, Mail, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  clearDemoPendingCheckout,
-  getDemoPendingCheckout,
-} from "@/lib/demo-client-store";
+  getSubscriptionByRef,
+  mockGatewayResponse,
+  type DemoSubscriptionPayload,
+} from "@/lib/demo-engine";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { EmailPreview } from "@/lib/types";
 
@@ -22,6 +23,20 @@ type SubscriptionPayload = {
   emailPreview: EmailPreview | null;
 };
 
+function toPayload(data: DemoSubscriptionPayload): SubscriptionPayload {
+  return {
+    apiKey: data.apiKey,
+    customerEmail: data.customerEmail,
+    status: data.status,
+    productName: data.productName,
+    planName: data.planName,
+    productSlug: data.productSlug,
+    gatewayUrl: data.gatewayUrl,
+    curlSnippet: data.curlSnippet,
+    emailPreview: data.emailPreview,
+  };
+}
+
 export function SuccessPanel({
   paymentRef,
   demoMode = false,
@@ -36,34 +51,36 @@ export function SuccessPanel({
   const [running, setRunning] = useState(false);
 
   useEffect(() => {
+    if (demoMode) {
+      let cancelled = false;
+      Promise.resolve().then(() => {
+        if (cancelled) return;
+        const local = getSubscriptionByRef(paymentRef, window.location.origin);
+        if (local) {
+          setData(toPayload(local));
+          setError(null);
+        } else {
+          setError(
+            "Subscription not found in this browser’s demo catalog. Complete checkout again from Demo mode.",
+          );
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     let cancelled = false;
     let attempts = 0;
 
     async function tryReconcile() {
       try {
-        const demoPending = demoMode
-          ? getDemoPendingCheckout(paymentRef)
-          : null;
         const res = await fetch("/api/checkout/reconcile", {
           method: "POST",
-          headers: runtimeFetchHeaders(demoMode, {
+          headers: runtimeFetchHeaders(false, {
             "Content-Type": "application/json",
           }),
-          body: JSON.stringify({
-            ref: paymentRef,
-            demoPending: demoPending
-              ? {
-                  planId: demoPending.planId,
-                  productId: demoPending.productId,
-                  customerEmail: demoPending.customerEmail,
-                  customerName: demoPending.customerName,
-                  amount: demoPending.amount,
-                  productName: demoPending.productName,
-                  planName: demoPending.planName,
-                  productSlug: demoPending.productSlug,
-                }
-              : null,
-          }),
+          body: JSON.stringify({ ref: paymentRef }),
         });
         return res.ok;
       } catch {
@@ -74,8 +91,6 @@ export function SuccessPanel({
     async function poll() {
       attempts += 1;
       try {
-        // Reconcile early and keep retrying — Monnify redirect often lands
-        // before the webhook, and Demo pending may only exist in localStorage.
         if (
           attempts === 1 ||
           attempts === 3 ||
@@ -87,13 +102,12 @@ export function SuccessPanel({
 
         const res = await fetch(
           `/api/subscriptions/by-ref?ref=${encodeURIComponent(paymentRef)}`,
-          { headers: runtimeFetchHeaders(demoMode) },
+          { headers: runtimeFetchHeaders(false) },
         );
         const json = await res.json();
         if (cancelled) return;
 
         if (json.ready && json.subscription) {
-          if (demoMode) clearDemoPendingCheckout(paymentRef);
           setData(json.subscription as SubscriptionPayload);
           return;
         }
@@ -120,38 +134,35 @@ export function SuccessPanel({
   }, [paymentRef, demoMode]);
 
   async function verifyNow() {
+    if (demoMode) {
+      const local = getSubscriptionByRef(paymentRef, window.location.origin);
+      if (local) {
+        setData(toPayload(local));
+        setError(null);
+      } else {
+        setError(
+          "Subscription not found. Complete checkout again from Demo mode.",
+        );
+      }
+      return;
+    }
+
     setError(null);
     setRunning(true);
     try {
-      const demoPending = demoMode ? getDemoPendingCheckout(paymentRef) : null;
       await fetch("/api/checkout/reconcile", {
         method: "POST",
-        headers: runtimeFetchHeaders(demoMode, {
+        headers: runtimeFetchHeaders(false, {
           "Content-Type": "application/json",
         }),
-        body: JSON.stringify({
-          ref: paymentRef,
-          demoPending: demoPending
-            ? {
-                planId: demoPending.planId,
-                productId: demoPending.productId,
-                customerEmail: demoPending.customerEmail,
-                customerName: demoPending.customerName,
-                amount: demoPending.amount,
-                productName: demoPending.productName,
-                planName: demoPending.planName,
-                productSlug: demoPending.productSlug,
-              }
-            : null,
-        }),
+        body: JSON.stringify({ ref: paymentRef }),
       });
       const res = await fetch(
         `/api/subscriptions/by-ref?ref=${encodeURIComponent(paymentRef)}`,
-        { headers: runtimeFetchHeaders(demoMode) },
+        { headers: runtimeFetchHeaders(false) },
       );
       const json = await res.json();
       if (json.ready && json.subscription) {
-        if (demoMode) clearDemoPendingCheckout(paymentRef);
         setData(json.subscription as SubscriptionPayload);
         setError(null);
       } else {
@@ -177,6 +188,19 @@ export function SuccessPanel({
     setRunning(true);
     setRunResult(null);
     try {
+      if (demoMode) {
+        await new Promise((r) => setTimeout(r, 400));
+        const mock = mockGatewayResponse(
+          {
+            name: data.productName,
+            slug: data.productSlug,
+          },
+          data.productSlug === "african-location-api" ? "/states" : "/",
+        );
+        setRunResult(JSON.stringify(mock, null, 2));
+        return;
+      }
+
       const res = await fetch(data.gatewayUrl, {
         headers: { Authorization: `Bearer ${data.apiKey}` },
       });
@@ -259,7 +283,7 @@ export function SuccessPanel({
         </div>
         {data.emailPreview ? (
           <div
-            className="prose prose-invert max-w-none rounded-lg border border-[var(--border)] bg-[var(--background)] p-4 text-sm"
+            className="max-w-none rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-900 shadow-sm [&_h1]:text-slate-900 [&_p]:text-slate-700 [&_strong]:text-slate-900"
             dangerouslySetInnerHTML={{ __html: data.emailPreview.html }}
           />
         ) : (

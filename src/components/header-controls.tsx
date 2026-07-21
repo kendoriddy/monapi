@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Code2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { setClientPreferences } from "@/lib/preferences-client";
 import { cn } from "@/lib/utils";
 import type { Experience, RuntimeMode } from "@/lib/runtime";
 
@@ -26,17 +27,6 @@ const EXPERIENCES: {
     icon: ShoppingBag,
   },
 ];
-
-async function savePreferences(input: {
-  experience?: Experience;
-  runtime?: RuntimeMode;
-}) {
-  await fetch("/api/preferences", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
 
 export function HeaderControls({
   experience,
@@ -77,8 +67,8 @@ export function HeaderControls({
       return;
     }
     setOpen(false);
-    startTransition(async () => {
-      await savePreferences({ experience: next });
+    startTransition(() => {
+      setClientPreferences({ experience: next });
       router.push("/");
       router.refresh();
     });
@@ -86,8 +76,8 @@ export function HeaderControls({
 
   function switchRuntime(next: RuntimeMode) {
     if (next === runtime) return;
-    startTransition(async () => {
-      await savePreferences({ runtime: next });
+    startTransition(() => {
+      setClientPreferences({ runtime: next });
       router.refresh();
     });
   }

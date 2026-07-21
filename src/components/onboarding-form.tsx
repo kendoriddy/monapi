@@ -12,22 +12,20 @@ import {
   plansToEditable,
   type EditableTier,
 } from "@/components/hub-preview-editor";
+import { buildHubFromForm, delay, publishProduct } from "@/lib/demo-engine";
 import {
-  getDemoProductByIdClient,
-  persistDemoProduct,
-} from "@/lib/demo-client-store";
+  AFRICAN_LOCATION_DESCRIPTION,
+  AFRICAN_LOCATION_NAME,
+  AFRICAN_LOCATION_TARGET_URL,
+} from "@/lib/demo-blueprint";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 
 export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
   const router = useRouter();
-  const [name, setName] = useState("PlateReader OCR");
-  const [targetUrl, setTargetUrl] = useState(
-    "https://api.platevision.test/v1/plates",
-  );
-  const [description, setDescription] = useState(
-    "I have an OCR API that reads vehicle license plates",
-  );
+  const [name, setName] = useState(AFRICAN_LOCATION_NAME);
+  const [targetUrl, setTargetUrl] = useState(AFRICAN_LOCATION_TARGET_URL);
+  const [description, setDescription] = useState(AFRICAN_LOCATION_DESCRIPTION);
   const [loading, setLoading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,9 +45,28 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
     setError(null);
 
     try {
+      if (demoMode) {
+        await delay(600);
+        const { product, plans, blueprint } = buildHubFromForm({
+          name,
+          targetUrl,
+          description,
+        });
+        setDemoProduct(product);
+        setDemoPlans(plans);
+        setProductId(product.id);
+        setProductSlug(product.slug);
+        setProductTitle(blueprint.product_name);
+        setLandingCopy(blueprint.landing_copy);
+        setDocsMarkdown(blueprint.docs_markdown);
+        setEditableTiers(plansToEditable(plans));
+        setShowPreview(true);
+        return;
+      }
+
       const res = await fetch("/api/products", {
         method: "POST",
-        headers: runtimeFetchHeaders(demoMode, {
+        headers: runtimeFetchHeaders(false, {
           "Content-Type": "application/json",
         }),
         body: JSON.stringify({ name, targetUrl, description }),
@@ -69,12 +86,6 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
       };
       const plans = data.plans as SubscriptionPlan[];
       const product = data.product as ApiProduct;
-
-      if (demoMode) {
-        persistDemoProduct(product, plans);
-        setDemoProduct(product);
-        setDemoPlans(plans);
-      }
 
       setProductId(product.id);
       setProductSlug(product.slug);
@@ -109,50 +120,16 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
     setPublishing(true);
     setError(null);
     try {
-      const stored =
-        demoMode && productId ? getDemoProductByIdClient(productId) : null;
-      const productForSnapshot = demoProduct ?? stored?.product ?? null;
-      const plansForSnapshot =
-        demoPlans.length > 0
-          ? demoPlans
-          : (stored?.plans ??
-            editableTiers.map((t) => ({
-              id: t.id,
-              product_id: productId,
-              name: t.name,
-              price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
-              limit_per_month: t.limit_per_month,
-              features: t.features,
-              monnify_plan_code: null,
-              created_at: new Date().toISOString(),
-            })));
-
-      const demoSnapshot =
-        demoMode && productForSnapshot
-          ? {
-              product: {
-                ...productForSnapshot,
-                landing_copy: landingCopy,
-                docs_markdown: docsMarkdown,
-                name: productTitle || productForSnapshot.name,
-                slug: productSlug || productForSnapshot.slug,
-              },
-              plans: plansForSnapshot,
-            }
-          : null;
-
-      const patchRes = await fetch(`/api/products/${productId}`, {
-        method: "PATCH",
-        headers: runtimeFetchHeaders(demoMode, {
-          "Content-Type": "application/json",
-        }),
-        body: JSON.stringify({
+      if (demoMode) {
+        if (!demoProduct) throw new Error("Demo product missing");
+        await delay(400);
+        const { product } = publishProduct({
+          product: demoProduct,
+          plans: demoPlans,
           landingCopy,
           docsMarkdown,
-          productName: productTitle || productForSnapshot?.name,
-          productSlug: productSlug || productForSnapshot?.slug,
-          targetUrl: productForSnapshot?.target_url || targetUrl,
-          description: productForSnapshot?.description || description,
+          productTitle: productTitle || demoProduct.name,
+          productSlug: productSlug || demoProduct.slug,
           tiers: editableTiers.map((t) => ({
             id: t.id,
             name: t.name,
@@ -161,7 +138,32 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
             features: t.features,
             description: t.description,
           })),
-          demoSnapshot,
+        });
+        setDemoProduct(product);
+        router.push(`/p/${product.slug}`);
+        return;
+      }
+
+      const patchRes = await fetch(`/api/products/${productId}`, {
+        method: "PATCH",
+        headers: runtimeFetchHeaders(false, {
+          "Content-Type": "application/json",
+        }),
+        body: JSON.stringify({
+          landingCopy,
+          docsMarkdown,
+          productName: productTitle,
+          productSlug,
+          targetUrl,
+          description,
+          tiers: editableTiers.map((t) => ({
+            id: t.id,
+            name: t.name,
+            price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
+            limit_per_month: t.limit_per_month,
+            features: t.features,
+            description: t.description,
+          })),
         }),
       });
       const patchData = await patchRes.json();
@@ -169,64 +171,17 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
         throw new Error(patchData.error || "Failed to save changes");
       }
 
-      if (demoMode && patchData.product && patchData.plans) {
-        persistDemoProduct(
-          patchData.product as ApiProduct,
-          patchData.plans as SubscriptionPlan[],
-        );
-        setDemoProduct(patchData.product as ApiProduct);
-        setDemoPlans(patchData.plans as SubscriptionPlan[]);
-      }
-
       const pubRes = await fetch(`/api/products/${productId}/publish`, {
         method: "POST",
-        headers: runtimeFetchHeaders(demoMode, {
+        headers: runtimeFetchHeaders(false, {
           "Content-Type": "application/json",
         }),
-        body: JSON.stringify({
-          demoSnapshot:
-            demoMode && (patchData.product || demoProduct)
-              ? {
-                  product: {
-                    ...((patchData.product as ApiProduct) || demoProduct!),
-                    landing_copy: landingCopy,
-                    docs_markdown: docsMarkdown,
-                    is_live: true,
-                  },
-                  plans:
-                    (patchData.plans as SubscriptionPlan[] | undefined) ??
-                    demoPlans,
-                }
-              : null,
-        }),
+        body: JSON.stringify({}),
       });
       const pubData = await pubRes.json();
       if (!pubRes.ok) throw new Error(pubData.error || "Failed to publish");
 
       const published = pubData.product as ApiProduct | undefined;
-      const publishedPlans =
-        (pubData.plans as SubscriptionPlan[] | undefined) ??
-        (patchData.plans as SubscriptionPlan[] | undefined) ??
-        [];
-
-      if (demoMode && published) {
-        const plansForPersist = publishedPlans.length
-          ? publishedPlans
-          : editableTiers.map((t) => ({
-              id: t.id,
-              product_id: published.id,
-              name: t.name,
-              price_ngn: t.name === "Pro" ? 15000 : t.price_ngn,
-              limit_per_month: t.limit_per_month,
-              features: t.features,
-              monnify_plan_code: null,
-              created_at: new Date().toISOString(),
-            }));
-        persistDemoProduct({ ...published, is_live: true }, plansForPersist);
-        setDemoProduct({ ...published, is_live: true });
-        setDemoPlans(plansForPersist);
-      }
-
       const slug = published?.slug || productSlug;
       router.push(`/p/${slug}`);
     } catch (err) {
@@ -246,7 +201,7 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
               <Input
                 id="name"
                 required
-                placeholder="PlateReader OCR"
+                placeholder="African Location API"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
               />
@@ -268,6 +223,8 @@ export function OnboardingForm({ demoMode }: { demoMode: boolean }) {
             <Textarea
               id="description"
               required
+              rows={12}
+              className="min-h-[220px] font-mono text-xs sm:text-sm"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />

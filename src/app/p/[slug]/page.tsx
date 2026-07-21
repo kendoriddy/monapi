@@ -5,20 +5,13 @@ import { DemoProductClientPage } from "@/components/demo-product-client-page";
 import { ProductDocs } from "@/components/product-docs";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { demoGetProductBySlug, isDemoMode } from "@/lib/demo-store";
 import { getHeaderState } from "@/lib/header-state";
 import { getAppOriginFromHeaders } from "@/lib/origin";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { buildGatewayCurl } from "@/lib/utils";
 
-async function loadProductBySlug(slug: string, demo: boolean) {
-  if (demo) {
-    const { product, plans } = await demoGetProductBySlug(slug);
-    if (!product) return null;
-    return { product, plans };
-  }
-
+async function loadLiveProductBySlug(slug: string) {
   const supabase = createServiceClient();
   const { data: product } = await supabase
     .from("api_products")
@@ -49,23 +42,21 @@ export default async function PublicProductPage({
   const { slug } = await params;
   const { experience, runtime, demo } = await getHeaderState();
   const origin = await getAppOriginFromHeaders();
-  // Prefer explicit demo runtime; also treat cookie-backed demo store as demo.
-  const demoRuntime = demo || (await isDemoMode());
-  const data = await loadProductBySlug(slug, demoRuntime);
 
-  if (!data) {
-    if (demoRuntime) {
-      return (
-        <DemoProductClientPage
-          slug={slug}
-          experience={experience}
-          runtime={runtime}
-          origin={origin}
-        />
-      );
-    }
-    notFound();
+  // Demo: always client shell reading localStorage catalog (seeded African Location API).
+  if (demo) {
+    return (
+      <DemoProductClientPage
+        slug={slug}
+        experience={experience}
+        runtime={runtime}
+        origin={origin}
+      />
+    );
   }
+
+  const data = await loadLiveProductBySlug(slug);
+  if (!data) notFound();
 
   const { product, plans } = data;
   const quickstartCurl = buildGatewayCurl(
@@ -91,7 +82,7 @@ export default async function PublicProductPage({
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-6">
         <div className="animate-in mb-12 max-w-2xl">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Subscribe{demoRuntime ? " · Demo" : ""}
+            Subscribe
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-4xl font-bold tracking-tight text-[var(--foreground)]">
             {product.name}
@@ -106,7 +97,7 @@ export default async function PublicProductPage({
             productId={product.id}
             productName={product.name}
             plans={plans}
-            demoMode={demoRuntime}
+            demoMode={false}
           />
         </section>
 

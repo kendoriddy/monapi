@@ -48,13 +48,21 @@ export default async function DocsPage() {
         <ol className="space-y-4 text-sm text-[var(--muted)]">
           <li className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
             <p className="font-semibold text-[var(--foreground)]">
-              Zero-config demo (judges / recording)
+              Zero-config demo (fully offline — no API calls)
             </p>
             <ul className="mt-3 list-inside list-disc space-y-1">
-              <li>GitHub login beat → onboard PlateReader OCR</li>
-              <li>Publish → `/p/plate-reader` with docs + curl</li>
+              <li>
+                Header → <strong>Demo</strong>, then Publisher or Subscriber
+              </li>
+              <li>
+                Publisher: generate African Location API → edit → publish →
+                `/p/african-location-api`
+              </li>
+              <li>
+                Subscriber: marketplace already has African Location API seeded
+              </li>
               <li>Pro ₦15,000 → simulated Monnify → success + inbox</li>
-              <li>Run request on gateway with new key</li>
+              <li>Run test request returns mock states JSON in-browser</li>
             </ul>
           </li>
           <li className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">

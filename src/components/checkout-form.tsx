@@ -6,10 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PricingCards } from "@/components/pricing-cards";
-import {
-  persistDemoPendingCheckout,
-  type DemoPendingCheckout,
-} from "@/lib/demo-client-store";
+import { delay, startCheckout } from "@/lib/demo-engine";
 import { runtimeFetchHeaders } from "@/lib/runtime-client";
 import type { SubscriptionPlan } from "@/lib/types";
 
@@ -41,9 +38,22 @@ export function CheckoutForm({
     setError(null);
 
     try {
+      if (demoMode) {
+        await delay(450);
+        const { redirectUrl } = startCheckout({
+          productId,
+          planId: selectedPlanId,
+          customerName,
+          customerEmail,
+          origin: window.location.origin,
+        });
+        window.location.href = redirectUrl;
+        return;
+      }
+
       const res = await fetch("/api/checkout/initialize", {
         method: "POST",
-        headers: runtimeFetchHeaders(demoMode, {
+        headers: runtimeFetchHeaders(false, {
           "Content-Type": "application/json",
         }),
         body: JSON.stringify({
@@ -56,16 +66,11 @@ export function CheckoutForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Checkout failed");
 
-      if (demoMode && data.pendingCheckout) {
-        persistDemoPendingCheckout(data.pendingCheckout as DemoPendingCheckout);
-      }
-
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl as string;
         return;
       }
 
-      // Demo / free-tier path: webhook already simulated or free plan provisioned
       if (data.redirectUrl) {
         window.location.href = data.redirectUrl as string;
         return;

@@ -1,74 +1,83 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { DemoDashboardClient } from "@/components/demo-dashboard-client";
 import { InsightsBanner } from "@/components/insights-banner";
 import { PricingCards } from "@/components/pricing-cards";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { getCurrentUser } from "@/lib/auth";
-import { getHeaderState } from "@/lib/header-state";
+import {
+  getProductById,
+  getSubscriptionsForProduct,
+  seedCatalogIfEmpty,
+} from "@/lib/demo-engine";
 import { buildInsightsSummary } from "@/lib/insights";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import type { Experience, RuntimeMode } from "@/lib/runtime";
 import type {
   ApiProduct,
   CustomerSubscription,
   SubscriptionPlan,
 } from "@/lib/types";
 
-export default async function DashboardProductPage({
-  params,
-}: {
-  params: Promise<{ productId: string }>;
-}) {
-  const { productId } = await params;
-  const { experience, runtime, demo } = await getHeaderState();
+type SubRow = CustomerSubscription & { plan: SubscriptionPlan | undefined };
 
-  if (demo) {
+export function DemoDashboardClient({
+  productId,
+  experience,
+  runtime,
+}: {
+  productId: string;
+  experience: Experience;
+  runtime: RuntimeMode;
+}) {
+  const [product, setProduct] = useState<ApiProduct | null>(null);
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [subscriptions, setSubscriptions] = useState<SubRow[]>([]);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      seedCatalogIfEmpty();
+      const data = getProductById(productId);
+      if (data) {
+        setProduct(data.product);
+        setPlans(data.plans);
+        setSubscriptions(getSubscriptionsForProduct(productId));
+      }
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [productId]);
+
+  if (!ready) {
     return (
-      <DemoDashboardClient
-        productId={productId}
-        experience={experience}
-        runtime={runtime}
-      />
+      <div className="flex min-h-screen items-center justify-center text-sm text-[var(--muted)]">
+        Loading dashboard…
+      </div>
     );
   }
 
-  const user = await getCurrentUser();
-  if (!user) notFound();
-
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("api_products")
-    .select("*")
-    .eq("id", productId)
-    .eq("developer_id", user.id)
-    .single();
-  const product = data as ApiProduct | null;
-
-  if (!product) notFound();
-
-  const { data: planRows } = await supabase
-    .from("subscription_plans")
-    .select("*")
-    .eq("product_id", productId)
-    .order("price_ngn", { ascending: true });
-  const plans = (planRows ?? []) as SubscriptionPlan[];
-
-  let subscriptions: (CustomerSubscription & {
-    plan: SubscriptionPlan | undefined;
-  })[] = [];
-
-  const service = createServiceClient();
-  const planIds = plans.map((p) => p.id);
-  if (planIds.length) {
-    const { data: subs } = await service
-      .from("customer_subscriptions")
-      .select("*")
-      .in("plan_id", planIds);
-    subscriptions = ((subs ?? []) as CustomerSubscription[]).map((s) => ({
-      ...s,
-      plan: plans.find((p) => p.id === s.plan_id),
-    }));
+  if (!product) {
+    return (
+      <div className="flex min-h-screen flex-col">
+        <SiteHeader experience={experience} runtime={runtime} />
+        <main className="mx-auto max-w-lg flex-1 px-4 py-20 text-center">
+          <h1 className="font-[family-name:var(--font-display)] text-2xl font-bold">
+            Product not found
+          </h1>
+          <p className="mt-3 text-sm text-[var(--muted)]">
+            This demo product isn&apos;t in this browser&apos;s catalog.
+          </p>
+          <Link href="/" className="mt-6 inline-block">
+            <Button size="sm">Back home</Button>
+          </Link>
+        </main>
+      </div>
+    );
   }
 
   const insight = buildInsightsSummary(
@@ -102,7 +111,7 @@ export default async function DashboardProductPage({
       <main className="mx-auto w-full max-w-6xl flex-1 space-y-8 px-4 py-12 sm:px-6">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent)]">
-            Publisher dashboard
+            Publisher dashboard · Demo
           </p>
           <h1 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-bold text-[var(--foreground)]">
             {product.name}

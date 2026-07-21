@@ -6,7 +6,7 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { ProductDocs } from "@/components/product-docs";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { getDemoProductBySlugClient } from "@/lib/demo-client-store";
+import { getProductBySlug, seedCatalogIfEmpty } from "@/lib/demo-engine";
 import type { Experience, RuntimeMode } from "@/lib/runtime";
 import type { ApiProduct, SubscriptionPlan } from "@/lib/types";
 import { buildGatewayCurl } from "@/lib/utils";
@@ -29,8 +29,16 @@ export function DemoProductClientPage({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    setData(getDemoProductBySlugClient(slug));
-    setReady(true);
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      seedCatalogIfEmpty();
+      setData(getProductBySlug(slug));
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [slug]);
 
   if (!ready) {

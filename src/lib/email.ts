@@ -11,13 +11,13 @@ export function buildApiKeyEmailHtml(input: {
 }) {
   return `
         <div style="font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.5; color: #0f172a;">
-          <h1 style="font-size: 20px;">Welcome to ${input.productName}</h1>
-          <p>Hi ${input.customerName || "there"},</p>
-          <p>Your <strong>${input.planName}</strong> subscription is active. Here's your API key:</p>
-          <pre style="background:#0b1220;color:#e2e8f0;padding:16px;border-radius:8px;">${input.apiKey}</pre>
-          <p>Quick start:</p>
-          <pre style="background:#0b1220;color:#e2e8f0;padding:16px;border-radius:8px;white-space:pre-wrap;">${input.curlSnippet}</pre>
-          <p style="color:#64748b;font-size:13px;">Powered by Monapi — the easiest way to sell your API in Africa.</p>
+          <h1 style="font-size: 20px; color: #0f172a; margin: 0 0 12px;">Welcome to ${input.productName}</h1>
+          <p style="color: #334155; margin: 0 0 8px;">Hi ${input.customerName || "there"},</p>
+          <p style="color: #334155; margin: 0 0 12px;">Your <strong style="color: #0f172a;">${input.planName}</strong> subscription is active. Here's your API key:</p>
+          <pre style="background:#0b1220;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;">${input.apiKey}</pre>
+          <p style="color: #334155; margin: 16px 0 8px;">Quick start:</p>
+          <pre style="background:#0b1220;color:#e2e8f0;padding:16px;border-radius:8px;white-space:pre-wrap;overflow-x:auto;">${input.curlSnippet}</pre>
+          <p style="color:#64748b;font-size:13px;margin:16px 0 0;">Powered by Monapi — the easiest way to sell your API in Africa.</p>
         </div>
       `;
 }

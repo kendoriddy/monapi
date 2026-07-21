@@ -8,16 +8,27 @@ Built with **Next.js**, **Supabase**, **Monnify Sandbox**, **OpenAI/Gemini**, an
 
 ---
 
-## Pitch demo script (no env keys required)
+## Pitch demo script (fully offline — no API calls)
 
-| Step | Action                                                                                                                  |
-| ---- | ----------------------------------------------------------------------------------------------------------------------- |
-| 1    | **Continue with GitHub** (demo shows “Signing in…”) → **PlateReader OCR** + endpoint → **Generate Monetization Hub**    |
-| 2    | Review tiers (Pro **₦15,000**) → **Publish** → open `/p/plate-reader`                                                   |
-| 3    | Customer selects **Pro**, email `customer@example.com` → **Subscribe** → **Monnify Sandbox (simulated)** checkout → Pay |
-| 4    | `/success` flashes API key, **demo inbox** email, **Run request** against `/api/v1/plate-reader`                        |
+Toggle **Demo** in the header, then pick **Publisher** (developer) or **Subscriber**. Everything runs in the browser (`localStorage`); no `/api/*`, Supabase, Monnify, AI, or email.
 
-With real env keys, the same flow uses Supabase, live Monnify redirect, Resend, and optional upstream proxy.
+### Developer (Publisher)
+
+| Step | Action                                                                                   |
+| ---- | ---------------------------------------------------------------------------------------- |
+| 1    | **Demo** + **Publisher** → African Location API defaults → **Generate Monetization Hub** |
+| 2    | Edit tiers/docs (Pro locked at **₦15,000**) → **Publish** → `/p/african-location-api`    |
+| 3    | Select **Pro** → **Subscribe** → simulated Monnify → **Pay**                             |
+| 4    | `/success` shows API key, demo inbox, **Run test request** (mock Nigerian states JSON)   |
+
+### Subscriber
+
+| Step | Action                                                                    |
+| ---- | ------------------------------------------------------------------------- |
+| 1    | **Demo** + **Subscriber** → marketplace shows seeded African Location API |
+| 2    | Open hub → Pro → simulated checkout → success + run request               |
+
+Switch to **Live** for real Supabase / Monnify / AI / Resend.
 
 ---
 
@@ -33,12 +44,12 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Demo mode
 
-Active when `NEXT_PUBLIC_SUPABASE_URL` is unset or `MONAPI_DEMO_MODE=true`:
+Active when the header runtime is **Demo** (or `MONAPI_DEMO_MODE=true`):
 
-- Local persistence: `.data/demo-store.json`
+- Single browser catalog in `localStorage` (seeded African Location API)
 - Simulated Monnify page: `/checkout/demo`
-- Demo email inbox on success when Resend is unset
-- Gateway returns realistic mock JSON (OCR-style for plate APIs)
+- Demo inbox preview on success
+- Gateway “Run request” returns mock Nigerian states JSON locally — zero network
 
 ---
 
